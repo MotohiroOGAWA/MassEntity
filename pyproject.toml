@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MassEntityCore"
+version = "0.1.0"
+description = "Core data structures and utilities for mass spectrometry analysis"
+authors = [
+    { name = "Motohiro Ogawa", email = "makakonto0503@outlook.jp" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
