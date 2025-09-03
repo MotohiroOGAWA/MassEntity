@@ -15,7 +15,8 @@ requires-python = ">=3.8"
 dependencies = [
     "torch",
     "numpy",
-    "pandas"
+    "pandas",
+    "h5py",
 ]
 
 [tool.setuptools.packages.find]
