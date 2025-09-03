@@ -13,7 +13,7 @@ class PeakSeries:
         self,
         data: torch.Tensor,
         offsets: torch.Tensor,
-        metadata: Optional[pd.DataFrame],
+        metadata: Optional[pd.DataFrame] = None,
         index: Optional[torch.Tensor] = None,
         is_sorted: bool = False,
         device: Optional[Union[torch.device, str]] = None,
