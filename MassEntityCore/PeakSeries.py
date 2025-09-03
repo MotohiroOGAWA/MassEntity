@@ -1,6 +1,6 @@
 import torch
 import pandas as pd
-from typing import Tuple, Iterator, Optional, Sequence, Literal
+from typing import Tuple, Iterator, Optional, Sequence, Literal, Union
 from .PeakEntry import PeakEntry
 
 class PeakSeries:
@@ -16,7 +16,7 @@ class PeakSeries:
         metadata: Optional[pd.DataFrame],
         index: Optional[torch.Tensor] = None,
         is_sorted: bool = False,
-        device: Optional[torch.device | str] = None,
+        device: Optional[Union[torch.device, str]] = None,
     ):
         # setup device
         _device = torch.device(device) if device is not None else None
@@ -131,7 +131,7 @@ class PeakSeries:
         return int(self._offsets_ref[i+1] - self._offsets_ref[i])
 
     # --- slicing ---
-    def __getitem__(self, i: int | slice | Sequence[int] | torch.Tensor) -> "PeakSeries":
+    def __getitem__(self, i: Union[int, slice, Sequence[int], torch.Tensor]) -> "PeakSeries":
         if isinstance(i, int):
             new_index = self._index[i:i+1]
         elif isinstance(i, slice):
@@ -150,7 +150,7 @@ class PeakSeries:
         # construct fully independent PeakSeries
         return PeakSeries(data, offsets, meta, index=None)
     
-    def to(self, device: torch.device | str) -> "PeakSeries":
+    def to(self, device: Union[torch.device, str]) -> "PeakSeries":
         """
         Return a new PeakSeries with data and offsets moved to the given device.
         Metadata (pandas DataFrame) remains on CPU.
