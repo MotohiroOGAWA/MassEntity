@@ -177,7 +177,12 @@ class PeakSeries:
         data = np.array(peak_list)
         return data
     
-    def normalize(self, scale: float = 1.0, in_place: bool = False) -> "PeakSeries":
+    def normalize(
+        self,
+        scale: float = 1.0,
+        in_place: bool = False,
+        method: Literal["for", "vectorized"] = "for"
+    ) -> "PeakSeries":
         """
         Normalize intensities in each spectrum so that the maximum intensity = scale.
 
@@ -185,6 +190,9 @@ class PeakSeries:
             scale (float): Target maximum intensity value after normalization (default=1.0).
             in_place (bool): If True, normalize self._data directly.
                              If False, return a new PeakSeries instance.
+            method (Literal["for", "vectorized"]): 
+                "for"        = per-spectrum loop (default, stable for large data).
+                "vectorized" = NumPy vectorized implementation (faster for small data).
 
         Returns:
             PeakSeries: Normalized PeakSeries (if in_place=False).
@@ -192,49 +200,28 @@ class PeakSeries:
         data = self._data if in_place else self._data.copy()
         meta = self._metadata if in_place else (None if self._metadata is None else self._metadata.copy())
 
-        maxima = np.array([
-            data[s:e, 1].max() if e > s else 1.0
-            for s, e in zip(self._offsets[:-1], self._offsets[1:])
-        ])
+        if method == "vectorized":
+            maxima = np.array([
+                data[s:e, 1].max() if e > s else 1.0
+                for s, e in zip(self._offsets[:-1], self._offsets[1:])
+            ])
+            spectrum_ids = np.repeat(np.arange(len(self)), np.diff(self._offsets))
+            valid = maxima[spectrum_ids] > 0
+            data[valid, 1] = data[valid, 1] / maxima[spectrum_ids][valid] * scale
 
-        spectrum_ids = np.repeat(np.arange(len(self)), np.diff(self._offsets))
-
-        valid = maxima[spectrum_ids] > 0
-        data[valid, 1] = data[valid, 1] / maxima[spectrum_ids][valid] * scale
+        elif method == "for":
+            for s, e in zip(self._offsets[:-1], self._offsets[1:]):
+                if e > s:
+                    max_intensity = data[s:e, 1].max()
+                    if max_intensity > 0:
+                        data[s:e, 1] = data[s:e, 1] / max_intensity * scale
+        else:
+            raise ValueError(f"Invalid method '{method}', choose 'for' or 'vectorized'.")
 
         if in_place:
             return self
         else:
             return PeakSeries(data, self._offsets.copy(), meta, is_sorted=False)
-
-    
-    def normalize_by_for(self, scale: float = 1.0, in_place: bool = False) -> "PeakSeries":
-        """
-        Normalize intensities in each spectrum so that the maximum intensity = scale.
-
-        Args:
-            scale (float): Target maximum intensity value after normalization (default=1.0).
-            in_place (bool): If True, normalize self._data directly.
-                             If False, return a new PeakSeries instance.
-
-        Returns:
-            PeakSeries: Normalized PeakSeries (if in_place=False).
-        """
-        data = self._data if in_place else self._data.copy()
-        meta = self._metadata if in_place else (None if self._metadata is None else self._metadata.copy())
-
-        for i in range(len(self)):
-            s, e = self._offsets[i], self._offsets[i+1]
-            if e > s:  # spectrum not empty
-                max_intensity = data[s:e, 1].max()
-                if max_intensity > 0:
-                    data[s:e, 1] = data[s:e, 1] / max_intensity * scale
-
-        if in_place:
-            return self
-        else:
-            return PeakSeries(data, self._offsets.copy(), meta, is_sorted=False)
-
 
     def sort_by_mz(self, ascending: bool = True, in_place: bool = False) -> "PeakSeries":
         """
