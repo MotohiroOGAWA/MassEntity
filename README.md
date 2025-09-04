@@ -47,8 +47,8 @@ You can run tests to verify that MassEntity is working properly.
 
 ### Using Python
 
-python run_tests.py
+python MassEntity/run_tests.py
 
 ### Using the shell script
 
-./run_tests.sh
+./MassEntity/run_tests.sh

@@ -47,8 +47,8 @@ MassEntity が正しく動作するか確認するためにテストを実行で
 
 ### Python から実行する場合
 
-python run_tests.py
+python MassEntity/run_tests.py
 
 ### シェルスクリプトを使う場合
 
-./run_tests.sh
+./MassEntity/run_tests.sh

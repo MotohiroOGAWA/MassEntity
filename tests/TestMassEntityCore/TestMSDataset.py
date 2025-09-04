@@ -2,8 +2,8 @@ import unittest
 import os
 import torch
 import pandas as pd
-from MassEntityCore.PeakSeries import PeakSeries
-from MassEntityCore.MSDataset import MSDataset
+from MassEntity.MassEntityCore.PeakSeries import PeakSeries
+from MassEntity.MassEntityCore.MSDataset import MSDataset
 
 
 class TestMSDataset(unittest.TestCase):
@@ -98,41 +98,38 @@ class TestMSDataset(unittest.TestCase):
         # self.assertNotEqual(ds_copy.meta_copy.iloc[0, 0], self.ds.meta_copy.iloc[0, 0])
 
 
-
     def test_save_and_load(self):
-        # Save dataset
-        self.ds.save(self.test_file)
+        for i in range(2):  # Test twice to ensure file overwrite works
+            if i == 0:
+                self.ds.to_hdf5(self.test_file)
+                ds_loaded = MSDataset.from_hdf5(self.test_file)
 
-        # Load back
-        ds_loaded = MSDataset.load(self.test_file)
-        
-
-        # --- Spectrum metadata check ---
-        pd.testing.assert_frame_equal(
-            ds_loaded.meta_copy.reset_index(drop=True),
-            self.ds.meta_copy.reset_index(drop=True)
-        )
-
-        # --- PeakSeries data check ---
-        torch.testing.assert_close(
-            ds_loaded.peak_series._data,
-            self.ds.peak_series._data
-        )
-        torch.testing.assert_close(
-            ds_loaded.peak_series._offsets,
-            self.ds.peak_series._offsets
-        )
-
-        # --- Peak metadata check ---
-        if self.ds.peak_series._metadata_ref is not None:
+            # --- Spectrum metadata check ---
             pd.testing.assert_frame_equal(
-                ds_loaded.peak_series._metadata_ref.reset_index(drop=True),
-                self.ds.peak_series._metadata_ref.reset_index(drop=True)
+                ds_loaded.meta_copy.reset_index(drop=True),
+                self.ds.meta_copy.reset_index(drop=True)
             )
 
-        # Ensure loaded is a new object, not a reference
-        self.assertIsNot(ds_loaded._spectrum_meta_ref, self.ds._spectrum_meta_ref)
-        self.assertIsNot(ds_loaded.peak_series._data_ref, self.ds.peak_series._data_ref)
+            # --- PeakSeries data check ---
+            torch.testing.assert_close(
+                ds_loaded.peak_series._data,
+                self.ds.peak_series._data
+            )
+            torch.testing.assert_close(
+                ds_loaded.peak_series._offsets,
+                self.ds.peak_series._offsets
+            )
+
+            # --- Peak metadata check ---
+            if self.ds.peak_series._metadata_ref is not None:
+                pd.testing.assert_frame_equal(
+                    ds_loaded.peak_series._metadata_ref.reset_index(drop=True),
+                    self.ds.peak_series._metadata_ref.reset_index(drop=True)
+                )
+
+            # Ensure loaded is a new object, not a reference
+            self.assertIsNot(ds_loaded._spectrum_meta_ref, self.ds._spectrum_meta_ref)
+            self.assertIsNot(ds_loaded.peak_series._data_ref, self.ds.peak_series._data_ref)
 
 
 
