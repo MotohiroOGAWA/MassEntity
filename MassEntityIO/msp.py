@@ -9,7 +9,7 @@ from typing import Tuple
 import re
 
 from .ItemParser import ItemParser
-from MassEntityCore import MSDataset, PeakSeries
+from ..MassEntityCore import MSDataset, PeakSeries
     
 
 def read_msp(filepath, encoding='utf-8') -> MSDataset:
