@@ -2,6 +2,7 @@ import unittest
 import os
 import torch
 import pandas as pd
+import numpy as np
 from MassEntity.MassEntityCore.PeakSeries import PeakSeries
 from MassEntity.MassEntityCore.MSDataset import MSDataset
 
@@ -66,6 +67,41 @@ class TestMSDataset(unittest.TestCase):
         self.assertListEqual(meta["spectrum_id"].tolist(), ["s1", "s2", "s3"])
         self.assertListEqual(meta["group"].tolist(), ["A", "B", "A"])
 
+    def test_add_new_column_full_dataset(self):
+        self.ds["score"] = [10, 20, 30]
+        self.assertIn("score", self.ds._spectrum_meta_ref.columns)
+        self.assertTrue(np.allclose(self.ds._spectrum_meta_ref["score"].values, [10, 20, 30]))
+
+    def test_add_new_column_subset(self):
+        sub_ds = self.ds[:2]
+        sub_ds["flag"] = [1, 0]
+
+        col = self.ds._spectrum_meta_ref["flag"].values
+        # First two updated, last should be NaN
+        self.assertTrue(np.all(col[:2] == [1, 0]))
+        self.assertTrue(np.isnan(col[2]))
+
+    def test_scalar_assignment_subset(self):
+        sub_ds = self.ds[1:3]
+        sub_ds["status"] = "ok"
+
+        col = self.ds._spectrum_meta_ref["status"].values
+        # Index 1 and 2 updated, index 0 should be NaN
+        self.assertTrue(np.isnan(col[0]))
+        self.assertEqual(col[1], "ok")
+        self.assertEqual(col[2], "ok")
+
+    def test_update_existing_column_subset(self):
+        # Add first
+        self.ds["label"] = ["x", "y", "z"]
+        sub_ds = self.ds[1:3]
+        sub_ds["label"] = ["aa", "bb"]
+
+        col = self.ds._spectrum_meta_ref["label"].values
+        self.assertEqual(col[0], "x")
+        self.assertEqual(col[1], "aa")
+        self.assertEqual(col[2], "bb")
+
     def test_getitem_subset(self):
         # Take spectrum 2 as SpectrumRecord
         rec = self.ds[1]
@@ -93,10 +129,9 @@ class TestMSDataset(unittest.TestCase):
         self.assertIsNot(ds_copy._spectrum_meta_ref, self.ds._spectrum_meta_ref)
         self.assertIsNot(ds_copy._peak_series._data_ref, self.ds._peak_series._data_ref)
 
-        # # Editing copy must not affect the original
-        # ds_copy.meta_copy.iloc[0, 0] = "zzz"
-        # self.assertNotEqual(ds_copy.meta_copy.iloc[0, 0], self.ds.meta_copy.iloc[0, 0])
-
+        # Editing copy must not affect the original
+        ds_copy[0]["spectrum_id"] = "modified"
+        self.assertNotEqual(ds_copy.meta_copy.iloc[0, 0], self.ds.meta_copy.iloc[0, 0])
 
     def test_save_and_load(self):
         for i in range(2):  # Test twice to ensure file overwrite works

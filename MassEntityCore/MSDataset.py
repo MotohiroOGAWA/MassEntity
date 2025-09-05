@@ -85,6 +85,39 @@ class MSDataset:
 
         else:
             raise TypeError(f"Invalid index type: {type(i)}")
+        
+    def __setitem__(self, key: str, value: Union[Sequence, pd.Series, Any]):
+        """
+        Add or update a metadata column for the current MSDataset view.
+
+        - If key exists, update values only for this view (subset).
+        - If key is new, create it with NaN for all rows, then fill only this view.
+        """
+        n_view = len(self._peak_series)           # number of rows in this view
+        idx = self._peak_series._index            # indices of this view
+        n_total = len(self._spectrum_meta_ref)    # total rows in the underlying DataFrame
+
+        # Ensure the column exists in the underlying metadata
+        if key not in self._spectrum_meta_ref.columns:
+            self._spectrum_meta_ref[key] = np.full(n_total, np.nan)
+
+        # Prepare the value(s) to assign
+        if isinstance(value, (list, np.ndarray, torch.Tensor, pd.Series)):
+            if len(value) != n_view:
+                raise ValueError(
+                    f"Length of values ({len(value)}) must match number of spectra in this view ({n_view})"
+                )
+            if isinstance(value, torch.Tensor):
+                value = value.cpu().numpy()
+            # Assign only for indices of this view
+            self._spectrum_meta_ref.loc[idx, key] = value
+        else:
+            # scalar → assign only for this view
+            self._spectrum_meta_ref.loc[idx, key] = value
+
+        # Track column in self._columns
+        if key not in self._columns:
+            self._columns.append(key)
 
     def copy(self) -> "MSDataset":
         """Return independent copy of both metadata and peaks."""
@@ -171,12 +204,25 @@ class SpectrumRecord:
     def __contains__(self, item: str) -> bool:
         return item in self._ms_dataset._columns
 
-    def __setitem__(self, key: str, value):
-        """Update metadata in place."""
-        assert key in self._ms_dataset._columns, f"Key '{key}' not in columns"
-        self._ms_dataset._spectrum_meta_ref.iloc[
+    def __setitem__(self, key: str, value: Any):
+        """
+        Update or add metadata value for this spectrum only.
+
+        - If key exists, overwrite the value.
+        - If key does not exist, create a new column and set value.
+        """
+        if key not in self._ms_dataset._spectrum_meta_ref.columns:
+            # Add new column with None for all rows
+            self._ms_dataset[key] = [None] * len(self._ms_dataset)
+
+        # Set value for the current spectrum (row in DataFrame)
+        self._ms_dataset._spectrum_meta_ref.iat[
             self._index, self._ms_dataset._spectrum_meta_ref.columns.get_loc(key)
         ] = value
+
+        # Ensure the new column is tracked in self._columns
+        if key not in self._ms_dataset._columns:
+            self._ms_dataset._columns.append(key)
 
     def __str__(self) -> str:
         # Format metadata

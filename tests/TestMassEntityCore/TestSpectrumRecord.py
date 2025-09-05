@@ -51,6 +51,14 @@ class TestSpectrumRecord(unittest.TestCase):
         # Ensure original dataset updated
         self.assertEqual(self.ds._spectrum_meta_ref.iloc[0]["group"], "Z")
 
+    def test_metadata_add_new_column(self):
+        # Add a new column via SpectrumRecord
+        self.record1["new_col"] = "abc"
+        self.assertIn("new_col", self.ds._spectrum_meta_ref.columns)
+        self.assertEqual(self.record1["new_col"], "abc")
+        # Other rows should remain NaN
+        self.assertTrue(pd.isna(self.record2["new_col"]))
+
     def test_str_and_repr(self):
         s = str(self.record1)
         r = repr(self.record1)
