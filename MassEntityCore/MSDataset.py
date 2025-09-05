@@ -3,7 +3,7 @@ import torch
 import pandas as pd
 import numpy as np
 import h5py
-from typing import Optional, Sequence, Union
+from typing import overload, Optional, Sequence, Union
 from .PeakSeries import PeakSeries
 
 
@@ -42,6 +42,15 @@ class MSDataset:
     def peak_series(self) -> PeakSeries:
         """Return PeakSeries view."""
         return self._peak_series
+    
+    @overload
+    def __getitem__(self, i: int) -> "MSDataset": ...
+    @overload
+    def __getitem__(self, i: slice) -> "MSDataset": ...
+    @overload
+    def __getitem__(self, i: Sequence[int]) -> "MSDataset": ...
+    @overload
+    def __getitem__(self, i: str) -> pd.Series: ...
 
     def __getitem__(self, i) -> "MSDataset":
         """Subselect spectra by index/slice."""

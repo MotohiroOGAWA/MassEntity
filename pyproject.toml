@@ -17,6 +17,7 @@ dependencies = [
     "numpy",
     "pandas",
     "h5py",
+    "pyarrow"
 ]
 
 [tool.setuptools.packages.find]
