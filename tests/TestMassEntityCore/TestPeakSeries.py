@@ -1,7 +1,7 @@
 import unittest
 import torch
 import pandas as pd
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
+from MassEntity.MassEntityCore.PeakSeries import PeakSeries, SpectrumPeaks
 
 
 class TestPeakSeries(unittest.TestCase):
@@ -42,9 +42,7 @@ class TestPeakSeries(unittest.TestCase):
         self.offsets = torch.tensor([0, 4, 10, 13, 20], dtype=torch.int64)
 
         # Metadata (simple IDs)
-        self.metadata = pd.DataFrame({
-            "id": list(range(1, 21))
-        })
+        self.metadata = pd.DataFrame({"id": list(range(1, 21))})
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.ps = PeakSeries(self.data, self.offsets, self.metadata.copy(), device=device)
@@ -59,87 +57,58 @@ class TestPeakSeries(unittest.TestCase):
 
     def test_getitem_int(self):
         sub = self.ps[2]  # spectrum 3
-        self.assertEqual(len(sub), 1)
-        self.assertEqual(sub.n_all_peaks, 3)
-        torch.testing.assert_close(sub._data[:, 0],
-                                   torch.tensor([315.0, 301.0, 310.0], device=self.ps.device))
+        self.assertIsInstance(sub, SpectrumPeaks)
+        self.assertEqual(len(sub), 3)  # 3 peaks
+        torch.testing.assert_close(
+            sub.data[:, 0],
+            torch.tensor([315.0, 301.0, 310.0], device=self.ps.device)
+        )
 
     def test_getitem_slice(self):
         sub = self.ps[0:2]  # spectra 1+2
+        self.assertIsInstance(sub, PeakSeries)
         self.assertEqual(len(sub), 2)
         self.assertEqual(sub.n_all_peaks, 10)
 
     def test_getitem_list(self):
         sub = self.ps[[1, 3]]
+        self.assertIsInstance(sub, PeakSeries)
         self.assertEqual(len(sub), 2)
         self.assertEqual(sub.n_all_peaks, 6 + 7)
 
     def test_iter_returns_spectra(self):
-        # Collect spectra from iterator
         spectra = list(self.ps)
-
-        # Number of yielded PeakSeries should equal number of spectra
         self.assertEqual(len(spectra), len(self.ps))
-
-        # Each element should be a PeakSeries
         for sp in spectra:
-            self.assertIsInstance(sp, PeakSeries)
-
-        # Check the number of peaks per spectrum matches n_peaks
+            self.assertIsInstance(sp, SpectrumPeaks)
         for i, sp in enumerate(spectra):
-            self.assertEqual(sp.n_all_peaks, self.ps.n_peaks(i))
-
-        # Check that the data matches between iterated PeakSeries and indexing
-        for i, sp in enumerate(spectra):
-            torch.testing.assert_close(sp._data, self.ps[i]._data)
-
-        # Metadata should also match
-        if self.ps._metadata is not None:
-            for i, sp in enumerate(spectra):
-                self.assertTrue(sp._metadata.equals(self.ps[i]._metadata))
+            self.assertEqual(len(sp), self.ps.n_peaks(i))
+            torch.testing.assert_close(sp.data, self.ps[i].data)
 
     def test_normalize_vectorized(self):
-        # --- Case 1: in_place=False (returns a new PeakSeries) ---
         ps_norm = self.ps.normalize(scale=1.0, method="vectorized", in_place=False)
-
-        # Each segment must be normalized to have max intensity = 1.0
         for i in range(len(ps_norm)):
             s, e = ps_norm._offsets[i].item(), ps_norm._offsets[i + 1].item()
             self.assertAlmostEqual(ps_norm._data[s:e, 1].max().item(), 1.0)
-
-        # The original PeakSeries should remain unchanged
         for i in range(len(self.ps)):
             s, e = self.ps._offsets[i].item(), self.ps._offsets[i + 1].item()
             orig_max = self.ps._data[s:e, 1].max().item()
             self.assertNotAlmostEqual(orig_max, 1.0)
-
-        # --- Case 2: in_place=True (modifies self.ps directly) ---
         self.ps.normalize(scale=13.0, method="vectorized", in_place=True)
-
-        # Now the original PeakSeries should also be normalized
         for i in range(len(self.ps)):
             s, e = self.ps._offsets[i].item(), self.ps._offsets[i + 1].item()
             self.assertAlmostEqual(self.ps._data[s:e, 1].max().item(), 13.0)
 
     def test_normalize_for(self):
-        # --- Case 1: in_place=False (returns a new PeakSeries) ---
         ps_norm = self.ps.normalize(scale=1.0, method="for", in_place=False)
-
-        # Each segment must be normalized to have max intensity = 1.0
         for i in range(len(ps_norm)):
             s, e = ps_norm._offsets[i].item(), ps_norm._offsets[i + 1].item()
             self.assertAlmostEqual(ps_norm._data[s:e, 1].max().item(), 1.0)
-
-        # The original PeakSeries should remain unchanged
         for i in range(len(self.ps)):
             s, e = self.ps._offsets[i].item(), self.ps._offsets[i + 1].item()
             orig_max = self.ps._data[s:e, 1].max().item()
             self.assertNotAlmostEqual(orig_max, 1.0)
-
-        # --- Case 2: in_place=True (modifies self.ps directly) ---
         self.ps.normalize(scale=13.0, method="for", in_place=True)
-
-        # Now the original PeakSeries should also be normalized
         for i in range(len(self.ps)):
             s, e = self.ps._offsets[i].item(), self.ps._offsets[i + 1].item()
             self.assertAlmostEqual(self.ps._data[s:e, 1].max().item(), 13.0)
@@ -224,12 +193,19 @@ class TestPeakSeries(unittest.TestCase):
 
 
     def test_view_behavior_sort(self):
-        sub = self.ps[1]  # spectrum 2
-        sub._data[:] = torch.flip(sub._data, dims=[0])
-        if sub._metadata is not None:
-            sub._metadata = sub._metadata.iloc[::-1].reset_index(drop=True)
-        sub.sort_by_mz(in_place=True)
-        s, e = self.ps._offsets[1].item(), self.ps._offsets[2].item()
+        # Take spectrum 2 as a SpectrumPeaks view
+        sub = self.ps[1]
+
+        # Shuffle peaks directly in parent PeakSeries
+        s, e = sub._s, sub._e
+        self.ps._data[s:e] = torch.flip(self.ps._data[s:e], dims=[0])
+        if self.ps._metadata_ref is not None:
+            self.ps._metadata_ref.iloc[s:e] = self.ps._metadata_ref.iloc[s:e].iloc[::-1].values
+
+        # Sort back via PeakSeries
+        self.ps.sort_by_mz(in_place=True)
+
+        # Verify that spectrum 2 is now sorted ascending by m/z
         mz_values = self.ps._data[s:e, 0]
         self.assertTrue(torch.all(torch.diff(mz_values) >= 0))
 
@@ -241,10 +217,13 @@ class TestPeakSeries(unittest.TestCase):
         self.assertIsNot(ps_copy._metadata, self.ps._metadata)
 
     def test_copy_behavior(self):
-        sub = self.ps[0].copy()
-        sub.normalize(scale=1.0, in_place=True)
-        s, e = self.ps._offsets[0].item(), self.ps._offsets[1].item()
-        self.assertNotAlmostEqual(self.ps._data[s:e, 1].max().item(), 1.0)
+        ps_copy = self.ps.copy()
+        ps_copy.normalize(scale=1.0, in_place=True)
+        # Original self.ps should not be changed
+        for i in range(len(self.ps)):
+            s, e = self.ps._offsets[i].item(), self.ps._offsets[i + 1].item()
+            orig_max = self.ps._data[s:e, 1].max().item()
+            self.assertNotAlmostEqual(orig_max, 1.0)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,7 @@ import unittest
 import torch
 import pandas as pd
 
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
-from MassEntity.MassEntityCore.SpectrumPeaks import SpectrumPeaks
+from MassEntity.MassEntityCore.PeakSeries import PeakSeries, SpectrumPeaks
 from MassEntity.MassEntityCore.PeakEntry import PeakEntry
 
 

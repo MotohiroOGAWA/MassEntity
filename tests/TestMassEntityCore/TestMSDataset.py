@@ -66,26 +66,26 @@ class TestMSDataset(unittest.TestCase):
         self.assertListEqual(meta["spectrum_id"].tolist(), ["s1", "s2", "s3"])
         self.assertListEqual(meta["group"].tolist(), ["A", "B", "A"])
 
-    # def test_spectrum_meta_setter(self):
-    #     # Replace spectrum metadata and check propagation to reference
-    #     new_meta = pd.DataFrame({
-    #         "spectrum_id": ["x1", "x2", "x3"],
-    #         "group": ["C", "D", "E"],
-    #         "rt": [9.99, 8.88, 7.77],
-    #         "intensity_sum": [999.0, 888.0, 777.0]
-    #     })
-    #     self.ds.meta_copy = new_meta
-    #     self.assertListEqual(
-    #         self.ds._spectrum_meta_ref["spectrum_id"].tolist(),
-    #         ["x1", "x2", "x3"]
-    #     )
-
     def test_getitem_subset(self):
-        # Take subset (only spectrum 2)
-        sub_ds = self.ds[1]
-        self.assertEqual(len(sub_ds), 1)
-        self.assertEqual(sub_ds.meta_copy.iloc[0]["spectrum_id"], "s2")
-        self.assertEqual(sub_ds.peak_series.n_all_peaks, 4)
+        # Take spectrum 2 as SpectrumRecord
+        rec = self.ds[1]
+
+        # Should be SpectrumRecord
+        from MassEntity.MassEntityCore.MSDataset import SpectrumRecord
+        self.assertIsInstance(rec, SpectrumRecord)
+
+        # Metadata should match spectrum 2
+        self.assertEqual(rec["spectrum_id"], "s2")
+        self.assertEqual(rec["group"], "B")
+
+        # SpectrumPeaks should contain only spectrum 2's peaks
+        self.assertEqual(rec.n_peaks, 4)
+
+        # Data consistency check (m/z values of spectrum 2)
+        torch.testing.assert_close(
+            rec.peaks.data[:, 0],
+            torch.tensor([200.0, 201.0, 202.0, 203.0], dtype=torch.float32)
+        )
 
     def test_copy_independence(self):
         # Copy should create independent objects

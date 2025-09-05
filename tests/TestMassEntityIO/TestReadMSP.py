@@ -46,7 +46,7 @@ class TestReadMSP(unittest.TestCase):
         self.assertEqual(ps.n_peaks(4), 6)
 
         # Check m/z values roughly match expectations
-        first_spectrum_data = ps[0]._data
+        first_spectrum_data = ps[0].data
         self.assertAlmostEqual(first_spectrum_data[0, 0].item(), 91.0542, places=4)
         self.assertAlmostEqual(first_spectrum_data[-1, 0].item(), 246.1125, places=4)
 
