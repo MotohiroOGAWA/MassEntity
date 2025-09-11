@@ -87,9 +87,11 @@ class MSDataset:
             # Boolean mask Series
             if len(i) != len(self):
                 raise ValueError(f"Boolean index length {len(i)} does not match number of spectra {len(self)}")
+            mask = i.to_numpy()
+            indices = np.nonzero(mask)[0]
             return MSDataset(
                 self._spectrum_meta_ref,
-                self._peak_series[i.to_numpy()],
+                self._peak_series[indices],
                 columns=self._columns
             )
         else:
