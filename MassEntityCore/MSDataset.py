@@ -67,7 +67,7 @@ class MSDataset:
             # Return a SpectrumRecord representing a single spectrum
             if not (0 <= i < len(self)):
                 raise IndexError(f"Index {i} out of range for {len(self)} spectra")
-            return SpectrumRecord(self, self._peak_series._index[i])
+            return SpectrumRecord(self, self._peak_series._index[i].item())
 
         elif isinstance(i, str):
             # Return metadata column as pandas.Series
