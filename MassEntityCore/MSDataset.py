@@ -83,7 +83,15 @@ class MSDataset:
                 self._peak_series[i],
                 columns=self._columns
             )
-
+        elif isinstance(i, pd.Series) and i.dtype == bool:
+            # Boolean mask Series
+            if len(i) != len(self):
+                raise ValueError(f"Boolean index length {len(i)} does not match number of spectra {len(self)}")
+            return MSDataset(
+                self._spectrum_meta_ref,
+                self._peak_series[i.to_numpy()],
+                columns=self._columns
+            )
         else:
             raise TypeError(f"Invalid index type: {type(i)}")
         
