@@ -395,7 +395,7 @@ class SpectrumPeaks:
         meta = None
         if self._peak_series._metadata_ref is not None:
             meta = self._peak_series._metadata_ref.iloc[j]
-        return PeakEntry(mz, inten, dict(meta))
+        return PeakEntry(mz, inten, dict(meta) if meta is not None else None)
     
     def __str__(self) -> str:
         # collect peak rows
