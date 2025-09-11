@@ -73,7 +73,8 @@ class MSDataset:
             # Return metadata column as pandas.Series
             if i not in self._columns:
                 raise KeyError(f"Column '{i}' not in available columns {self._columns}")
-            return self._spectrum_meta_ref[i]
+            view = self._spectrum_meta_ref.iloc[self._peak_series._index.tolist()]
+            return view[i].reset_index(drop=True)
 
         elif isinstance(i, (slice, Sequence, torch.Tensor, np.ndarray)):
             # Return MSDataset subset with the same column selection
@@ -144,6 +145,20 @@ class MSDataset:
             f"columns={self._columns})"
         )
     
+    def sort_by(self, column: str, ascending: bool = True) -> "MSDataset":
+        if column not in self._columns:
+            raise KeyError(f"Column '{column}' not in available columns {self._columns}")
+
+        # Get sorted index order based on column values
+        order = self[column].sort_values(ascending=ascending).index.to_numpy()
+
+        # Apply to PeakSeries (reorder spectra accordingly)
+        return MSDataset(
+            self._spectrum_meta_ref,
+            self._peak_series[order],
+            columns=self._columns
+        )
+
     def to_hdf5(self, path: str):
         """Save MSDataset to one HDF5 file, embedding Parquet as binary."""
         with h5py.File(path, "w") as f:

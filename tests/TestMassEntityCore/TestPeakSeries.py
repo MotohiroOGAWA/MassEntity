@@ -225,6 +225,31 @@ class TestPeakSeries(unittest.TestCase):
             orig_max = self.ps._data[s:e, 1].max().item()
             self.assertNotAlmostEqual(orig_max, 1.0)
 
+    def test_reorder(self):
+        # Reorder spectra: original indices [0,1,2,3] -> [2,0,3,1]
+        order = [2, 0, 3, 1]
+        reordered = self.ps.reorder(order)
+
+        # Check 1: reordered has the same length as the original
+        self.assertEqual(len(reordered), len(self.ps))
+
+        # Check 2: number of peaks in each spectrum matches the original spectra
+        for new_i, old_i in enumerate(order):
+            self.assertEqual(
+                reordered.n_peaks(new_i),
+                self.ps.n_peaks(old_i),
+                f"Mismatch in n_peaks at reordered index {new_i}"
+            )
+
+        # Check 3: internal index tensor matches the expected order
+        self.assertTrue(torch.equal(reordered._index, self.ps._index[order]))
+
+        # Check 4: invalid permutations should raise ValueError
+        with self.assertRaises(ValueError):
+            self.ps.reorder([0, 0, 1, 2])  # duplicate index
+        with self.assertRaises(ValueError):
+            self.ps.reorder([0, 1, 2])     # missing index
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -330,6 +330,36 @@ class PeakSeries:
                 index=None,                     # independent copy (not a view)
                 is_sorted=False
             )
+        
+    def reorder(self, new_order: Sequence[int]) -> "PeakSeries":
+        """
+        Reorder the spectra according to new_order.
+        The resulting PeakSeries will have spectra in the new order,
+        and the indices will be re-labeled 0..N-1.
+
+        Args:
+            new_order (Sequence[int]): Desired order of spectra (permutation of range(len(self))).
+
+        Returns:
+            PeakSeries: Reordered PeakSeries.
+        """
+        new_order_tensor = torch.as_tensor(new_order, dtype=torch.int64, device=self.device)
+
+        if (set(new_order_tensor.tolist()) != set(range(len(self)))) or (len(new_order_tensor) != len(self)):
+            raise ValueError(
+                f"new_order must be a permutation of range(len(self)) = {list(range(len(self)))}"
+            )
+
+        # reorder the index
+        new_index = self._index[new_order_tensor]
+
+        # return a new PeakSeries with reordered index
+        return PeakSeries(
+            self._data_ref,
+            self._offsets_ref,
+            self._metadata_ref,
+            index=new_index
+        )
 
 
 
