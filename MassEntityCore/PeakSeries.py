@@ -259,26 +259,91 @@ class PeakSeries:
                 is_sorted=False
             )
 
-    def sort_by_mz(self, ascending: bool = True, in_place: bool = False) -> "PeakSeries":
+    def sort_by_mz(
+        self,
+        ascending: bool = True,
+        in_place: bool = False,
+        method: Optional[Literal["loop", "batch"]] = None
+    ) -> "PeakSeries":
         """
         Sort peaks by m/z within each spectrum segment.
+
+        Args:
+            ascending (bool): Sort order, ascending if True.
+            in_place (bool): If True, update this PeakSeries in place.
+            method (str|None): Sorting method:
+                - "loop": per-segment loop-based implementation
+                - "batch": batched vectorized implementation
         """
         data = self._data if in_place else self._data.clone()
         meta = self._metadata if in_place else (
             None if self._metadata is None else self._metadata.copy()
         )
-        perm = torch.empty(data.shape[0], dtype=torch.int64)
 
-        for i in range(self._offsets.size(0) - 1):
-            s, e = self._offsets[i].item(), self._offsets[i + 1].item()
-            order = torch.argsort(data[s:e, 0], stable=True)
-            if not ascending:
-                order = torch.flip(order, dims=[0])
-            perm[s:e] = order + s
+        # Decide which method to use
+        if method is None:
+            if self.device.type == "cpu":
+                method = "loop"
+            elif self.device.type == "cuda":
+                method = "batch"
+            else:
+                raise ValueError(f"Unsupported device type '{self.device.type}'")
 
-        data = data[perm]
-        if meta is not None:
-            meta = meta.iloc[perm.tolist()].reset_index(drop=True)
+        if method == "loop":
+            perm = torch.empty(data.shape[0], dtype=torch.int64)
+
+            # Per-segment argsort on CPU
+            for i in range(self._offsets.size(0) - 1):
+                s, e = self._offsets[i].item(), self._offsets[i + 1].item()
+                order = torch.argsort(data[s:e, 0], stable=True)
+                if not ascending:
+                    order = torch.flip(order, dims=[0])
+                perm[s:e] = order + s
+
+            # Apply permutation
+            data = data[perm]
+            if meta is not None:
+                meta = meta.iloc[perm.tolist()].reset_index(drop=True)
+
+        elif method == "batch":
+            seg_lens = self._offsets[1:] - self._offsets[:-1]   # [n_segments]
+            n_segments = seg_lens.numel()
+            max_len = seg_lens.max().item()
+
+            # segment id per peak
+            seg_ids = torch.repeat_interleave(torch.arange(n_segments, device=data.device), seg_lens)
+
+            # index within each segment (padded)
+            idx_within = torch.arange(max_len, device=data.device).repeat(n_segments)
+            mask = idx_within < seg_lens.repeat_interleave(max_len)
+
+            # Initialize padded m/z and index matrices
+            mz_matrix = torch.full((n_segments, max_len),
+                                float("inf") if ascending else float("-inf"),
+                                dtype=data.dtype, device=data.device)
+            index_matrix = torch.full((n_segments, max_len), -1,
+                                    dtype=torch.long, device=data.device)
+
+            # Assign real values only where mask == True
+            flat_idx = torch.arange(data.size(0), device=data.device)
+            mz_matrix[seg_ids, idx_within[mask]] = data[:, 0]
+            index_matrix[seg_ids, idx_within[mask]] = flat_idx
+
+            # Batched argsort along each row (segment)
+            order = torch.argsort(mz_matrix, dim=1,
+                                descending=not ascending, stable=True)
+
+            # Gather sorted indices
+            sorted_idx = torch.gather(index_matrix, 1, order).reshape(-1)
+            sorted_idx = sorted_idx[sorted_idx >= 0]  # remove padding (-1)
+
+            # Apply permutation
+            data = data[sorted_idx]
+            if meta is not None:
+                meta = meta.iloc[sorted_idx.tolist()].reset_index(drop=True)
+
+        else:
+            raise ValueError(f"Invalid method '{method}'")
 
         if in_place:
             self._data = data
@@ -286,50 +351,121 @@ class PeakSeries:
             return self
         else:
             return PeakSeries(
-                data.clone(),               # normalized data
-                self._offsets.clone(),          # offsets also copied
-                None if meta is None else meta.copy(),  # metadata also copied
-                index=None,                     # this is an independent copy, not a view
+                data.clone(),
+                self._offsets.clone(),
+                None if meta is None else meta.copy(),
+                index=None,
                 is_sorted=False
             )
-
-    def sorted_by_intensity(self, ascending: bool = True, in_place: bool = False) -> "PeakSeries":
+        
+    def sorted_by_intensity(
+        self,
+        ascending: bool = True,
+        in_place: bool = False,
+        method: Optional[Literal["loop", "batch"]] = None
+    ) -> "PeakSeries":
         """
         Sort peaks by intensity within each spectrum segment.
+
+        Args:
+            ascending (bool): Sort order, ascending if True.
+            in_place (bool): If True, update this PeakSeries in place.
+            method (str|None): Sorting method:
+                - "loop": per-segment loop-based implementation
+                - "batch": batched vectorized implementation
         """
         data = self._data if in_place else self._data.clone()
         meta = self._metadata if in_place else (
             None if self._metadata is None else self._metadata.copy()
         )
-        perm = torch.empty(data.shape[0], dtype=torch.int64)
 
-        # Build a global permutation by concatenating per-segment argsort indices
-        for i in range(self._offsets.size(0) - 1):
-            s, e = self._offsets[i].item(), self._offsets[i + 1].item()
-            order = torch.argsort(data[s:e, 1], stable=True)
-            if not ascending:
-                order = torch.flip(order, dims=[0])
-            perm[s:e] = order + s
+        # Decide which method to use
+        if method is None:
+            if self.device.type == "cpu":
+                method = "loop"
+            elif self.device.type == "cuda":
+                method = "batch"
+            else:
+                raise ValueError(f"Unsupported device type '{self.device.type}'")
 
-        # Apply permutation
-        data = data[perm]
-        if meta is not None:
-            meta = meta.iloc[perm.tolist()].reset_index(drop=True)
+        if method == "loop":
+            perm = torch.empty(data.shape[0], dtype=torch.int64)
+
+            # Per-segment argsort on CPU
+            for i in range(self._offsets.size(0) - 1):
+                s, e = self._offsets[i].item(), self._offsets[i + 1].item()
+                order = torch.argsort(data[s:e, 1], stable=True)
+                if not ascending:
+                    order = torch.flip(order, dims=[0])
+                perm[s:e] = order + s
+
+            # Apply permutation
+            data = data[perm]
+            if meta is not None:
+                meta = meta.iloc[perm.tolist()].reset_index(drop=True)
+
+        elif method == "batch":
+            seg_lens = self._offsets[1:] - self._offsets[:-1]   # [n_segments]
+            n_segments = seg_lens.numel()
+            max_len = seg_lens.max().item()
+
+            # segment id per peak
+            seg_ids = torch.repeat_interleave(torch.arange(n_segments, device=data.device), seg_lens)
+
+            # index within each segment (padded)
+            idx_within = torch.arange(max_len, device=data.device).repeat(n_segments)
+            mask = idx_within < seg_lens.repeat_interleave(max_len)
+
+            # Initialize padded intensity and index matrices
+            intensity_matrix = torch.full(
+                (n_segments, max_len),
+                float("inf") if ascending else float("-inf"),
+                dtype=data.dtype,
+                device=data.device
+            )
+            index_matrix = torch.full(
+                (n_segments, max_len),
+                -1,
+                dtype=torch.long,
+                device=data.device
+            )
+
+            # Assign real values only where mask == True
+            flat_idx = torch.arange(data.size(0), device=data.device)
+            intensity_matrix[seg_ids, idx_within[mask]] = data[:, 1]
+            index_matrix[seg_ids, idx_within[mask]] = flat_idx
+
+            # Batched argsort along each row (segment)
+            order = torch.argsort(
+                intensity_matrix, dim=1,
+                descending=not ascending, stable=True
+            )
+
+            # Gather sorted indices
+            sorted_idx = torch.gather(index_matrix, 1, order).reshape(-1)
+            sorted_idx = sorted_idx[sorted_idx >= 0]  # remove padding (-1)
+
+            # Apply permutation
+            data = data[sorted_idx]
+            if meta is not None:
+                meta = meta.iloc[sorted_idx.tolist()].reset_index(drop=True)
+
+        else:
+            raise ValueError(f"Invalid method '{method}'")
 
         if in_place:
-            # Update this PeakSeries in place
             self._data = data
             self._metadata = meta
             return self
         else:
-            # Return a new independent PeakSeries with sorted data
             return PeakSeries(
-                data.clone(),                   # sorted data
-                self._offsets.clone(),          # keep offsets
-                None if meta is None else meta.copy(),  # sorted metadata
-                index=None,                     # independent copy (not a view)
+                data.clone(),
+                self._offsets.clone(),
+                None if meta is None else meta.copy(),
+                index=None,
                 is_sorted=False
             )
+
         
     def reorder(self, new_order: Sequence[int]) -> "PeakSeries":
         """
