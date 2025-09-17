@@ -7,6 +7,7 @@ import h5py
 from typing import overload, Optional, Sequence, Union, Any
 from .PeakSeries import PeakSeries
 from .PeakSeries import PeakSeries, SpectrumPeaks, PeakCondition
+from .SpecCondition import SpecCondition
 
 
 class MSDataset:
@@ -188,25 +189,33 @@ class MSDataset:
             columns=self._columns
         )
 
-    def filter(self, condition: Union[PeakCondition]) -> "MSDataset":
+    def filter(self, condition: Union[PeakCondition, SpecCondition]) -> "MSDataset":
         """
-        Filter peaks in each spectrum based on a PeakCondition.
+        Filter peaks in each spectrum based on a PeakCondition or filter spectra
+        based on a SpecCondition.
 
         Peaks that do not satisfy the condition are removed.
-        Spectra that become empty (0 peaks) are retained with zero-length.
 
         Example:
             cond = IntensityThreshold(threshold=100.0)
             filtered_ds = ds.filter(cond)
         """
-        if not isinstance(condition, PeakCondition):
-            raise TypeError("condition must be an instance of PeakCondition")
+        if not isinstance(condition, (PeakCondition, SpecCondition)):
+            raise TypeError("condition must be an instance of PeakCondition or SpecCondition")
 
         if isinstance(condition, PeakCondition):
             filtered_peak_series = self._peak_series.filter(condition)
             return MSDataset(
                 self._spectrum_meta_ref.iloc[filtered_peak_series._index][self._columns],
                 filtered_peak_series,
+                columns=list(self._columns)
+            )
+        elif isinstance(condition, SpecCondition):
+            mask = condition.evaluate(self)  # torch.BoolTensor of shape [n_spectra]
+            indices = torch.nonzero(mask, as_tuple=False).squeeze(1).cpu().numpy()
+            return MSDataset(
+                self._spectrum_meta_ref.iloc[self._peak_series._index[indices]][self._columns],
+                self._peak_series[indices].copy(),
                 columns=list(self._columns)
             )
         else:
