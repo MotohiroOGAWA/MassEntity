@@ -6,7 +6,7 @@ import numpy as np
 import h5py
 from typing import overload, Optional, Sequence, Union, Any
 from .PeakSeries import PeakSeries
-from .PeakSeries import PeakSeries, SpectrumPeaks
+from .PeakSeries import PeakSeries, SpectrumPeaks, PeakCondition
 
 
 class MSDataset:
@@ -168,6 +168,30 @@ class MSDataset:
             self._peak_series[order],
             columns=self._columns
         )
+
+    def filter(self, condition: Union[PeakCondition]) -> "MSDataset":
+        """
+        Filter peaks in each spectrum based on a PeakCondition.
+
+        Peaks that do not satisfy the condition are removed.
+        Spectra that become empty (0 peaks) are retained with zero-length.
+
+        Example:
+            cond = IntensityThreshold(threshold=100.0)
+            filtered_ds = ds.filter(cond)
+        """
+        if not isinstance(condition, PeakCondition):
+            raise TypeError("condition must be an instance of PeakCondition")
+
+        if isinstance(condition, PeakCondition):
+            filtered_peak_series = self._peak_series.filter(condition)
+            return MSDataset(
+                self._spectrum_meta_ref,
+                filtered_peak_series,
+                columns=self._columns
+            )
+        else:
+            raise TypeError("Unsupported condition type")
 
     def to_hdf5(self, path: str):
         """Save MSDataset to one HDF5 file, embedding Parquet as binary."""
