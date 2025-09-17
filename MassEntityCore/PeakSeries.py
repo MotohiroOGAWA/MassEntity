@@ -119,7 +119,10 @@ class PeakSeries:
     @_metadata.setter
     def _metadata(self, value: pd.DataFrame):
         if self._metadata_ref is None:
-            raise AttributeError("No metadata_ref exists to update.")
+            if value is None:
+                return
+            else:
+                raise AttributeError("No metadata_ref exists to update.")
 
         # shape consistency check
         if len(value) != len(self._metadata):
