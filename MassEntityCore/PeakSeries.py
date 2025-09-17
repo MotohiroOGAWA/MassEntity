@@ -3,6 +3,7 @@ import torch
 import pandas as pd
 from typing import overload, Tuple, Iterator, Optional, Sequence, Literal, Union
 from .PeakEntry import PeakEntry
+from .PeakCondition import PeakCondition
 
 class PeakSeries:
     """
@@ -90,6 +91,25 @@ class PeakSeries:
             offset += seg_len
 
     @property
+    def mz(self) -> torch.Tensor:
+        return self._data[:, 0]
+    
+    @mz.setter
+    def mz(self, value: torch.Tensor):
+        if value.shape != self.mz.shape:
+            raise ValueError(f"Assigned tensor has shape {value.shape}, expected {self.mz.shape}")
+        self._data[:, 0] = value
+
+    @property
+    def intensity(self) -> torch.Tensor:
+        return self._data[:, 1]
+    @intensity.setter
+    def intensity(self, value: torch.Tensor):
+        if value.shape != self.intensity.shape:
+            raise ValueError(f"Assigned tensor has shape {value.shape}, expected {self.intensity.shape}")
+        self._data[:, 1] = value
+
+    @property
     def _metadata(self) -> Optional[pd.DataFrame]:
         if self._metadata_ref is None:
             return None
@@ -126,6 +146,11 @@ class PeakSeries:
     @property
     def n_all_peaks(self) -> int:
         return int((self._offsets_ref[1:] - self._offsets_ref[:-1])[self._index].sum())
+
+    @property
+    def length(self) -> torch.Tensor:
+        lengths = self._offsets_ref[1:] - self._offsets_ref[:-1]
+        return lengths[self._index]
 
     def n_peaks(self, index: int) -> int:
         i = self._index[index].item()
@@ -495,6 +520,51 @@ class PeakSeries:
             self._offsets_ref,
             self._metadata_ref,
             index=new_index
+        )
+    
+    def filter(self, condition: "PeakCondition") -> "PeakSeries":
+        """
+        Return a new PeakSeries containing only peaks that satisfy the given condition.
+
+        Args:
+            condition (PeakCondition): A condition to evaluate on this PeakSeries.
+
+        Returns:
+            PeakSeries: A new PeakSeries with only the peaks that satisfy the condition.
+        """
+        mask = condition.evaluate(self)  # torch.BoolTensor
+
+        if mask.numel() != self._data.shape[0]:
+            raise ValueError(
+                f"Condition returned mask of shape {mask.shape}, "
+                f"expected {self._data.shape[0]}"
+            )
+
+        # apply mask to peaks
+        filtered_data = self._data[mask]
+
+        # recompute offsets
+        spectrum_ids = torch.repeat_interleave(
+            torch.arange(len(self), device=mask.device),
+            self._offsets[1:] - self._offsets[:-1]
+        )
+        kept_counts = torch.bincount(
+            spectrum_ids[mask], minlength=len(self)
+        )
+        new_offsets = torch.zeros(len(self) + 1, dtype=torch.int64, device=mask.device)
+        new_offsets[1:] = torch.cumsum(kept_counts, dim=0)
+
+        # filter metadata if available
+        if self._metadata is not None:
+            filtered_meta = self._metadata.iloc[mask.cpu().numpy()].reset_index(drop=True)
+        else:
+            filtered_meta = None
+
+        return PeakSeries(
+            filtered_data,
+            new_offsets,
+            filtered_meta,
+            index=None
         )
 
 
