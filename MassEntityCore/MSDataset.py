@@ -186,9 +186,9 @@ class MSDataset:
         if isinstance(condition, PeakCondition):
             filtered_peak_series = self._peak_series.filter(condition)
             return MSDataset(
-                self._spectrum_meta_ref,
+                self._spectrum_meta_ref.iloc[filtered_peak_series._index][self._columns],
                 filtered_peak_series,
-                columns=self._columns
+                columns=list(self._columns)
             )
         else:
             raise TypeError("Unsupported condition type")
