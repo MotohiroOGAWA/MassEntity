@@ -200,22 +200,30 @@ class PeakSeries:
 
         # construct fully independent PeakSeries
         return PeakSeries(data, offsets, meta, index=None)
-    
-    def to(self, device: Union[torch.device, str]) -> "PeakSeries":
+
+    def to(self, device: Union[torch.device, str], in_place: bool = True) -> "PeakSeries":
         """
         Return a new PeakSeries with data and offsets moved to the given device.
         Metadata (pandas DataFrame) remains on CPU.
         """
         device = torch.device(device)
-        data = self._data.clone().to(device)
-        offsets = self._offsets.clone().to(device)
-        meta = None if self._metadata is None else self._metadata.copy()
+        data = self._data_ref.to(device)
+        offsets = self._offsets_ref.to(device)
+        meta = None if self._metadata_ref is None else self._metadata_ref.copy()
+        index = self._index.to(device)
 
-        return PeakSeries(data, offsets, meta, index=None)
-    
+        if in_place:
+            self._data_ref = data
+            self._offsets_ref = offsets
+            self._metadata_ref = meta
+            self._index = index
+            return self
+        else:
+            return PeakSeries(data, offsets, meta, index=index)
+
     @property
     def device(self) -> torch.device:
-        return self._data.device
+        return self._data_ref.device
 
     def normalize(
         self,
