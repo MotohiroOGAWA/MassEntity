@@ -71,14 +71,14 @@ class AllIntegerMZ(SpecCondition):
         mz = ds.peak_series.mz
 
         # Check if each m/z is an integer
-        is_int = (mz % 1 == 0)
+        is_int = ((mz % 1) == 0).to(torch.int32)
 
         # Aggregate across each segment: True only if all peaks are integers
         seg_ids = torch.repeat_interleave(
             torch.arange(len(offsets) - 1, device=mz.device),
             offsets[1:] - offsets[:-1]
         )
-        result = torch.ones(len(offsets) - 1, dtype=torch.bool, device=mz.device)
+        result = torch.ones(len(offsets) - 1, dtype=torch.int32, device=mz.device)
         result = result.scatter_reduce(0, seg_ids, is_int, reduce="amin", include_self=True)
 
-        return result
+        return result.bool()
