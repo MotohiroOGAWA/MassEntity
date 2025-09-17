@@ -170,7 +170,7 @@ class TestPeakSeries(unittest.TestCase):
                 shuffled._metadata.iloc[s:e] = shuffled._metadata.iloc[perm.tolist()].values
 
         # --- Case 1: in_place=False ---
-        sorted_ps = shuffled.sorted_by_intensity(ascending=False, in_place=False)
+        sorted_ps = shuffled.sort_by_intensity(ascending=False, in_place=False)
 
         for i in range(len(sorted_ps)):
             s, e = sorted_ps._offsets[i].item(), sorted_ps._offsets[i + 1].item()
@@ -181,7 +181,7 @@ class TestPeakSeries(unittest.TestCase):
             self.assertTrue(torch.all(diffs <= 1e-6), f"Not sorted descending: {intensities}")
 
         # --- Case 2: in_place=True ---
-        shuffled.sorted_by_intensity(ascending=True, in_place=True)
+        shuffled.sort_by_intensity(ascending=True, in_place=True)
 
         for i in range(len(shuffled)):
             s, e = shuffled._offsets[i].item(), shuffled._offsets[i + 1].item()

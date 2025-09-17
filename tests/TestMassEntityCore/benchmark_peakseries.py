@@ -1,7 +1,7 @@
 import time
 import torch
 import pandas as pd
-from MassEntityCore.PeakSeries import PeakSeries
+from MassEntity.MassEntityCore.PeakSeries import PeakSeries
 
 
 def make_peakseries(n_spectra: int, peaks_per_spectrum: int, device: str = "cpu") -> PeakSeries:
@@ -49,7 +49,7 @@ def benchmark(n_spectra: int, peaks_per_spectrum: int, device: str = "cpu"):
     print(f"  For-loop normalize:   {t_loop:.6f} sec\n")
 
 
-# python -m tests.benchmark_peakseries
+# python -m MassEntity.tests.TestMassEntityCore.benchmark_peakseries
 if __name__ == "__main__":
     # CPU benchmark
     benchmark(1000, 100)
