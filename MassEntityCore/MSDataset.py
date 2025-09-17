@@ -206,7 +206,7 @@ class MSDataset:
         if isinstance(condition, PeakCondition):
             filtered_peak_series = self._peak_series.filter(condition)
             return MSDataset(
-                self._spectrum_meta_ref.iloc[filtered_peak_series._index][self._columns],
+                self._spectrum_meta_ref.iloc[filtered_peak_series._index.cpu()][self._columns],
                 filtered_peak_series,
                 columns=list(self._columns)
             )
@@ -214,7 +214,7 @@ class MSDataset:
             mask = condition.evaluate(self)  # torch.BoolTensor of shape [n_spectra]
             indices = torch.nonzero(mask, as_tuple=False).squeeze(1).cpu().numpy()
             return MSDataset(
-                self._spectrum_meta_ref.iloc[self._peak_series._index[indices]][self._columns],
+                self._spectrum_meta_ref.iloc[self._peak_series._index[indices].cpu()][self._columns],
                 self._peak_series[indices].copy(),
                 columns=list(self._columns)
             )

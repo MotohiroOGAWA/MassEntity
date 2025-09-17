@@ -21,7 +21,7 @@ class PeakSeries:
         device: Optional[Union[torch.device, str]] = None,
     ):
         # setup device
-        _device = torch.device(device) if device is not None else None
+        _device = torch.device(device) if device is not None else data.device
         assert isinstance(data, torch.Tensor), "data must be torch.Tensor"
         assert data.ndim == 2 and data.shape[1] == 2, "data must be shape (n_peaks, 2)"
         assert isinstance(offsets, torch.Tensor), "offsets must be torch.Tensor"
@@ -39,8 +39,7 @@ class PeakSeries:
         else:
             self._index = index.clone()
 
-        if _device is not None:
-            self._index = self._index.to(_device)
+        self._index = self._index.to(_device)
 
         if is_sorted:
             self.sort_by_mz(in_place=True)
@@ -559,7 +558,7 @@ class PeakSeries:
             filtered_data,
             new_offsets,
             filtered_meta,
-            index=None
+            index=None,
         )
 
 
