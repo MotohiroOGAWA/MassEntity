@@ -155,6 +155,25 @@ class MSDataset:
             f"columns={self._columns})"
         )
     
+    def to(self, device: Union[torch.device, str], in_place=True) -> "MSDataset":
+        """
+        Move PeakSeries data and offsets to the given device.
+
+        Metadata (pandas DataFrame) remains on CPU.
+
+        If in_place=True, modify this MSDataset's PeakSeries in place and return self.
+        If in_place=False, return a new MSDataset with PeakSeries moved to device.
+        """
+        if in_place:
+            self._peak_series.to(device, in_place=True)
+            return self
+        else:
+            return MSDataset(
+                self._spectrum_meta_ref,
+                self._peak_series.to(device, in_place=False),
+                columns=self._columns
+            )
+    
     def sort_by(self, column: str, ascending: bool = True) -> "MSDataset":
         if column not in self._columns:
             raise KeyError(f"Column '{column}' not in available columns {self._columns}")
