@@ -273,7 +273,7 @@ class PeakSeries:
 
         if in_place:
             self._data = data
-            self._metadata = meta
+            # self._metadata = meta
             return self
         else:
             return PeakSeries(
