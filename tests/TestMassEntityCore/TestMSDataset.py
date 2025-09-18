@@ -204,10 +204,11 @@ class TestMSDataset(unittest.TestCase):
         )
 
     def test_save_and_load(self):
-        for i in range(2):  # Test twice to ensure file overwrite works
-            if i == 0:
-                self.ds.to_hdf5(self.test_file)
-                ds_loaded = MSDataset.from_hdf5(self.test_file)
+        # Test both sliced save (default) and reference save (save_ref=True)
+        for save_ref in [False, True]:
+            # Save to file
+            self.ds.to_hdf5(self.test_file, save_ref=save_ref)
+            ds_loaded = MSDataset.from_hdf5(self.test_file)
 
             # --- Spectrum metadata check ---
             pd.testing.assert_frame_equal(
@@ -223,6 +224,10 @@ class TestMSDataset(unittest.TestCase):
             torch.testing.assert_close(
                 ds_loaded.peaks._offsets,
                 self.ds.peaks._offsets
+            )
+            torch.testing.assert_close(
+                ds_loaded.peaks._index,
+                self.ds.peaks._index
             )
 
             # --- Peak metadata check ---

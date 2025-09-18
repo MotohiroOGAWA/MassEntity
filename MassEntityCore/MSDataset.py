@@ -284,22 +284,34 @@ class MSDataset:
             columns=datasets[0]._columns
         )
 
-    def to_hdf5(self, path: str):
-        """Save MSDataset to one HDF5 file, embedding Parquet as binary."""
+    def to_hdf5(self, path: str, save_ref: bool = False):
+        """
+        Save MSDataset to one HDF5 file, embedding Parquet as binary.
+
+        Args:
+            path (str): Output HDF5 file path.
+            save_ref (bool): 
+                - False (default): Save only the sliced (view) data.
+                - True: Save the full reference data and also store the current index separately.
+        """
+        # Decide source dataset
+        dataset = self if save_ref else self.copy()
+
         with h5py.File(path, "w") as f:
             # ---- save peak data ----
-            f.create_dataset("peaks/data", data=self._peak_series._data_ref.cpu().numpy())
-            f.create_dataset("peaks/offsets", data=self._peak_series._offsets_ref.cpu().numpy())
+            f.create_dataset("peaks/data", data=dataset._peak_series._data_ref.cpu().numpy())
+            f.create_dataset("peaks/offsets", data=dataset._peak_series._offsets_ref.cpu().numpy())
+            f.create_dataset("peaks/index", data=dataset._peak_series._index.cpu().numpy())
 
             # ---- save peak metadata (Parquet binary) ----
-            if self._peak_series._metadata_ref is not None:
+            if dataset._peak_series._metadata_ref is not None:
                 buf = io.BytesIO()
-                self._peak_series._metadata_ref.to_parquet(buf, engine="pyarrow")
+                dataset._peak_series._metadata_ref.to_parquet(buf, engine="pyarrow")
                 f.create_dataset("peaks/metadata_parquet", data=np.void(buf.getvalue()))
 
             # ---- save spectrum metadata (Parquet binary) ----
             buf = io.BytesIO()
-            self._spectrum_meta_ref.to_parquet(buf, engine="pyarrow")
+            dataset._spectrum_meta_ref.to_parquet(buf, engine="pyarrow")
             f.create_dataset("spectrum_meta_parquet", data=np.void(buf.getvalue()))
 
     @staticmethod
@@ -309,6 +321,7 @@ class MSDataset:
             # ---- load peak data ----
             data = torch.tensor(f["peaks/data"][:], dtype=torch.float32, device=device)
             offsets = torch.tensor(f["peaks/offsets"][:], dtype=torch.int64, device=device)
+            index = torch.tensor(f["peaks/index"][:], dtype=torch.int64, device=device)
 
             # ---- load peak metadata ----
             peak_meta = None
@@ -320,7 +333,7 @@ class MSDataset:
             buf = io.BytesIO(f["spectrum_meta_parquet"][()].tobytes())
             spectrum_meta = pd.read_parquet(buf, engine="pyarrow")
 
-        ps = PeakSeries(data, offsets, peak_meta)
+        ps = PeakSeries(data, offsets, peak_meta, index=index, device=device)
         return MSDataset(spectrum_meta, ps)
     
 
