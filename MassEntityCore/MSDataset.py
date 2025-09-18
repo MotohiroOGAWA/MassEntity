@@ -42,7 +42,7 @@ class MSDataset:
         return meta[self._columns]
 
     @property
-    def peak_series(self) -> PeakSeries:
+    def peaks(self) -> PeakSeries:
         """Return PeakSeries view."""
         return self._peak_series
     

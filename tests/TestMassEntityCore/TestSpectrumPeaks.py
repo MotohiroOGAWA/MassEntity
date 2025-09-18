@@ -60,6 +60,27 @@ class TestSpectrumPeaks(unittest.TestCase):
         with self.assertRaises(IndexError):
             _ = self.spec1[5]
 
+    def test_setitem_scalar(self):
+        # Assign scalar value to metadata column
+        self.spec1["new_col"] = "test_value"
+        meta = self.spec1.metadata
+        self.assertIn("new_col", meta.columns)
+        self.assertTrue(all(meta["new_col"] == "test_value"))
+        self.assertEqual(self.metadata["new_col"].isna().sum(), 6)  # other spectra remain NaN
+
+    def test_setitem_sequence(self):
+        # Assign sequence value to existing metadata column
+        values = ["a", "b", "c"]
+        self.spec2["note"] = values
+        meta = self.spec2.metadata
+        self.assertListEqual(meta["note"].tolist(), values)
+        self.assertListEqual(self.metadata["note"].tolist(), ["p1", "p2", "p3", "a", "b", "c", "p7", "p8", "p9"])
+
+    def test_setitem_sequence_length_mismatch(self):
+        # Length mismatch should raise ValueError
+        with self.assertRaises(ValueError):
+            self.spec3["note"] = ["x", "y"]  # only 2 values, but spectrum has 3 peaks
+
     def test_iter(self):
         peaks = list(self.spec3)
         self.assertEqual(len(peaks), 3)

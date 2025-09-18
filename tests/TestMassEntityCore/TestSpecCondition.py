@@ -70,7 +70,7 @@ class TestSpecCondition(unittest.TestCase):
         self.assertEqual(len(filtered_ds), 2)
         expected_spec_ids = [1, 3]
         self.assertListEqual(filtered_ds._spectrum_meta_ref['spec_id'].tolist(), expected_spec_ids)
-        self.assertEqual(filtered_ds.peak_series.n_all_peaks, 4)  # 2 peaks from each of the 2 spectra
+        self.assertEqual(filtered_ds.peaks.n_all_peaks, 4)  # 2 peaks from each of the 2 spectra
 
 
 if __name__ == "__main__":

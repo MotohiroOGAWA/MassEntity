@@ -36,7 +36,7 @@ class TestReadMSP(unittest.TestCase):
         self.assertAlmostEqual(float(meta.loc[0, "PrecursorMZ"]), 288.1225, places=4)
 
         # --- PeakSeries checks ---
-        ps = ds.peak_series
+        ps = ds.peaks
         self.assertIsInstance(ps, PeakSeries)
         # Total peaks should equal sum of NumPeaks in file (8+6+12+20+6 = 52)
         self.assertEqual(ps.n_all_peaks, 52)

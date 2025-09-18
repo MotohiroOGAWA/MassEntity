@@ -67,8 +67,8 @@ class AllIntegerMZ(SpecCondition):
     """
 
     def evaluate(self, ds: MSDataset) -> torch.BoolTensor:
-        offsets = ds.peak_series._offsets
-        mz = ds.peak_series.mz
+        offsets = ds.peaks._offsets
+        mz = ds.peaks.mz
 
         # Check if each m/z is an integer
         is_int = ((mz % 1) == 0).to(torch.int32)

@@ -217,24 +217,24 @@ class TestMSDataset(unittest.TestCase):
 
             # --- PeakSeries data check ---
             torch.testing.assert_close(
-                ds_loaded.peak_series._data,
-                self.ds.peak_series._data
+                ds_loaded.peaks._data,
+                self.ds.peaks._data
             )
             torch.testing.assert_close(
-                ds_loaded.peak_series._offsets,
-                self.ds.peak_series._offsets
+                ds_loaded.peaks._offsets,
+                self.ds.peaks._offsets
             )
 
             # --- Peak metadata check ---
-            if self.ds.peak_series._metadata_ref is not None:
+            if self.ds.peaks._metadata_ref is not None:
                 pd.testing.assert_frame_equal(
-                    ds_loaded.peak_series._metadata_ref.reset_index(drop=True),
-                    self.ds.peak_series._metadata_ref.reset_index(drop=True)
+                    ds_loaded.peaks._metadata_ref.reset_index(drop=True),
+                    self.ds.peaks._metadata_ref.reset_index(drop=True)
                 )
 
             # Ensure loaded is a new object, not a reference
             self.assertIsNot(ds_loaded._spectrum_meta_ref, self.ds._spectrum_meta_ref)
-            self.assertIsNot(ds_loaded.peak_series._data_ref, self.ds.peak_series._data_ref)
+            self.assertIsNot(ds_loaded.peaks._data_ref, self.ds.peaks._data_ref)
 
 
 

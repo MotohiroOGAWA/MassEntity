@@ -1,7 +1,8 @@
 from __future__ import annotations
 import torch
 import pandas as pd
-from typing import overload, Tuple, Iterator, Optional, Sequence, Literal, Union
+import numpy as np
+from typing import overload, Tuple, Iterator, Optional, Sequence, Literal, Union, Any
 from .PeakEntry import PeakEntry
 from .PeakCondition import PeakCondition
 
@@ -597,6 +598,35 @@ class SpectrumPeaks:
             meta = self._peak_series._metadata_ref.iloc[j]
         return PeakEntry(mz, inten, dict(meta) if meta is not None else None)
     
+    def __setitem__(self, key: str, value: Union[Sequence, pd.Series, Any]):
+        """
+        Set a metadata column for all peaks in this spectrum.
+
+        Args:
+            key (str): Metadata column name.
+            value (Sequence|pd.Series|Any): New values for the metadata column.
+                If a single value is provided, it will be broadcast to all peaks.
+                If a sequence or pd.Series is provided, its length must match the number of peaks.
+        """
+        n_peaks = len(self)
+        if key not in self._peak_series._metadata_ref.columns:
+            self._peak_series._metadata_ref[key] = pd.NA
+
+        # Prepare the value(s) to assign
+        idx = range(self._s, self._e)
+        if isinstance(value, (list, np.ndarray, torch.Tensor, pd.Series)):
+            if len(value) != n_peaks:
+                raise ValueError(
+                    f"Length of values ({len(value)}) must match number of peaks in this view ({n_peaks})"
+                )
+            if isinstance(value, torch.Tensor):
+                value = value.cpu().numpy()
+            # Assign only for indices of this view
+            self._peak_series._metadata_ref.loc[idx, key] = value
+        else:
+            # scalar → assign only for this view
+            self._peak_series._metadata_ref.loc[idx, key] = value
+    
     def __str__(self) -> str:
         # collect peak rows
         rows = []
@@ -642,6 +672,12 @@ class SpectrumPeaks:
     def data(self) -> torch.Tensor:
         """Return the raw peak tensor [n_peaks, 2]."""
         return self._peak_series._data_ref[self._s:self._e]
+    
+    @data.setter
+    def data(self, value: torch.Tensor):
+        if value.shape != (len(self), 2):
+            raise ValueError(f"Assigned tensor has shape {value.shape}, expected ({len(self)}, 2)")
+        self._peak_series._data_ref[self._s:self._e] = value
 
     @property
     def metadata(self) -> Optional[pd.DataFrame]:
@@ -649,6 +685,24 @@ class SpectrumPeaks:
         if self._peak_series._metadata_ref is None:
             return None
         return self._peak_series._metadata_ref.iloc[self._s:self._e].reset_index(drop=True)
+
+    @property
+    def mz(self) -> torch.Tensor:
+        """Return the m/z values of the peaks."""
+        return self._peak_series._data_ref[self._s:self._e, 0]
+    
+    @mz.setter
+    def mz(self, value: torch.Tensor):
+        self._peak_series._data_ref[self._s:self._e, 0] = value
+
+    @property
+    def intensity(self) -> torch.Tensor:
+        """Return the intensity values of the peaks."""
+        return self._peak_series._data_ref[self._s:self._e, 1]
+    
+    @intensity.setter
+    def intensity(self, value: torch.Tensor):
+        self._peak_series._data_ref[self._s:self._e, 1] = value
 
     def normalize(
         self,
