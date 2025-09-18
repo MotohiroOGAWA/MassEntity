@@ -55,7 +55,7 @@ class MSDataset:
     @overload
     def __getitem__(self, i: str) -> pd.Series: ...
 
-    def __getitem__(self, i: Union[int, slice, Sequence[int], str, torch.Tensor, np.ndarray]):
+    def __getitem__(self, i: Union[int, slice, Sequence[int], str, torch.Tensor, np.ndarray]) -> Union[SpectrumRecord, "MSDataset", pd.Series]:
         """
         Flexible indexing for MSDataset.
 

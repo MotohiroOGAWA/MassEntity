@@ -609,6 +609,8 @@ class SpectrumPeaks:
                 If a sequence or pd.Series is provided, its length must match the number of peaks.
         """
         n_peaks = len(self)
+        if self._peak_series._metadata_ref is None:
+            self._peak_series._metadata_ref = pd.DataFrame(index=range(self._peak_series._data_ref.shape[0]))
         if key not in self._peak_series._metadata_ref.columns:
             self._peak_series._metadata_ref[key] = pd.NA
 
