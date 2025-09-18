@@ -241,6 +241,9 @@ class TestMSDataset(unittest.TestCase):
             self.assertIsNot(ds_loaded._spectrum_meta_ref, self.ds._spectrum_meta_ref)
             self.assertIsNot(ds_loaded.peaks._data_ref, self.ds.peaks._data_ref)
 
+            ds_loaded['new_col'] = 123
+            self.assertNotIn('new_col', self.ds._spectrum_meta_ref.columns)
+
     def test_concat(self):
         for i in range(2):  # Test twice to ensure consistency
             # --- Split dataset into subsets of size 1 ---

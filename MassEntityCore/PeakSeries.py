@@ -199,7 +199,7 @@ class PeakSeries:
         # materialize actual sliced data
         data = self._data.clone()
         offsets = self._offsets.clone()
-        meta = None if self._metadata is None else self._metadata.copy()
+        meta = None if self._metadata is None else self._metadata.copy().reset_index(drop=True)
 
         # construct fully independent PeakSeries
         return PeakSeries(data, offsets, meta, index=None, device=self.device)

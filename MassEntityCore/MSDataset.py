@@ -39,7 +39,7 @@ class MSDataset:
         meta = self._spectrum_meta_ref.iloc[self._peak_series._index.tolist()]
 
         # Column selection (always defined)
-        return meta[self._columns]
+        return meta[self._columns].reset_index(drop=True)
 
     @property
     def peaks(self) -> PeakSeries:
