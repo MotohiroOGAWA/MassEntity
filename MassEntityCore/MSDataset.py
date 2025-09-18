@@ -156,6 +156,11 @@ class MSDataset:
             f"columns={self._columns})"
         )
     
+    @property
+    def device(self) -> torch.device:
+        """Device of the PeakSeries data tensor."""
+        return self._peak_series.device
+    
     def to(self, device: Union[torch.device, str], in_place=True) -> "MSDataset":
         """
         Move PeakSeries data and offsets to the given device.
