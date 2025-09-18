@@ -236,6 +236,47 @@ class TestMSDataset(unittest.TestCase):
             self.assertIsNot(ds_loaded._spectrum_meta_ref, self.ds._spectrum_meta_ref)
             self.assertIsNot(ds_loaded.peaks._data_ref, self.ds.peaks._data_ref)
 
+    def test_concat(self):
+        for i in range(2):  # Test twice to ensure consistency
+            # --- Split dataset into subsets of size 1 ---
+            ds = self.ds.copy()
+            if i == 0:
+                subsets = [ds[i:i+1].copy() for i in range(len(ds))]
+            else:
+                subsets = [ds[i:i+1] for i in range(len(ds))]
+
+            # Each subset should contain exactly one spectrum
+            self.assertTrue(all(len(sub) == 1 for sub in subsets))
+
+            # --- Concatenate subsets back into one dataset ---
+            merged = MSDataset.concat(subsets)
+
+            # --- Check dataset length and shape ---
+            self.assertEqual(len(merged), len(self.ds))
+            self.assertEqual(merged.shape, self.ds.shape)
+
+            # --- Check spectrum metadata equality ---
+            pd.testing.assert_frame_equal(
+                merged.meta_copy.reset_index(drop=True),
+                self.ds.meta_copy.reset_index(drop=True)
+            )
+
+            # --- Check peak data equality ---
+            torch.testing.assert_close(
+                merged.peaks._data_ref,
+                self.ds.peaks._data_ref
+            )
+            torch.testing.assert_close(
+                merged.peaks._offsets_ref,
+                self.ds.peaks._offsets_ref
+            )
+
+            # --- Check peak metadata equality ---
+            if self.ds.peaks._metadata_ref is not None:
+                pd.testing.assert_frame_equal(
+                    merged.peaks._metadata_ref.reset_index(drop=True),
+                    self.ds.peaks._metadata_ref.reset_index(drop=True)
+                )
 
 
 if __name__ == "__main__":

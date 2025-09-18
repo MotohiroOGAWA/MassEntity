@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 import numpy as np
 import h5py
-from typing import overload, Optional, Sequence, Union, Any
+from typing import overload, Optional, Sequence, Union, Any, Tuple, List
 from .PeakSeries import PeakSeries
 from .PeakSeries import PeakSeries, SpectrumPeaks, PeakCondition
 from .SpecCondition import SpecCondition
@@ -225,6 +225,64 @@ class MSDataset:
             )
         else:
             raise TypeError("Unsupported condition type")
+        
+    @classmethod
+    def concat(cls, datasets: List["MSDataset"], device: torch.device=None) -> "MSDataset":
+        """
+        Concatenate multiple MSDataset objects into one.
+
+        Args:
+            datasets (List[MSDataset]): List of datasets to concatenate.
+
+        Returns:
+            MSDataset: A single merged dataset.
+        """
+        if not datasets:
+            raise ValueError("No datasets provided for concatenation")
+        
+        if device is None:
+            device = datasets[0].device
+
+        datasets = [ds.copy() for ds in datasets]
+
+        # --- concatenate spectrum-level metadata ---
+        spectrum_meta = pd.concat(
+            [ds._spectrum_meta_ref for ds in datasets],
+            ignore_index=True
+        )
+
+        # --- concatenate peak-level data ---
+        data_list = [ds.peaks._data_ref for ds in datasets]
+        offsets_list = [ds.peaks._offsets_ref for ds in datasets]
+        peak_meta_list = [
+            ds.peaks._metadata_ref
+            for ds in datasets
+            if ds.peaks._metadata_ref is not None
+        ]
+
+        data = torch.cat(data_list, dim=0)
+
+        # Adjust offsets across datasets
+        offsets = [0]
+        peak_offset = 0
+        for ds in datasets:
+            seg_offsets = ds.peaks._offsets_ref[1:] + peak_offset
+            offsets.extend(seg_offsets.tolist())
+            peak_offset += ds.peaks._offsets_ref[-1].item()
+        offsets = torch.tensor(offsets, dtype=torch.int64)
+
+        # Concatenate peak metadata if available
+        peak_meta = None
+        if peak_meta_list:
+            peak_meta = pd.concat(peak_meta_list, ignore_index=True)
+
+        peak_series = PeakSeries(data, offsets, peak_meta, device=device)
+
+        return cls(
+            spectrum_meta,
+            peak_series,
+            columns=datasets[0]._columns
+        )
 
     def to_hdf5(self, path: str):
         """Save MSDataset to one HDF5 file, embedding Parquet as binary."""

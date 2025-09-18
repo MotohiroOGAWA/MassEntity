@@ -202,7 +202,7 @@ class PeakSeries:
         meta = None if self._metadata is None else self._metadata.copy()
 
         # construct fully independent PeakSeries
-        return PeakSeries(data, offsets, meta, index=None)
+        return PeakSeries(data, offsets, meta, index=None, device=self.device)
 
     def to(self, device: Union[torch.device, str], in_place: bool = True) -> "PeakSeries":
         """
