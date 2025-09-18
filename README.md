@@ -19,7 +19,7 @@ To integrate MassEntity into an existing project, run the following commands at 
 
 ```bash
 # At the root directory of your project
-git submodule add https://github.com/your-username/MassEntity.git cores/MassEntity
+git submodule add https://github.com/MotohiroOGAWA/MassEntity.git cores/MassEntity
 git commit -m "Add MassEntity as submodule"
 ```
 

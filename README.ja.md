@@ -19,7 +19,7 @@ Git サブモジュールとして組み込むことや、開発モードでの�
 
 ```bash
 # プロジェクトのルートディレクトリで
-git submodule add https://github.com/your-username/MassEntity.git cores/MassEntity
+git submodule add https://github.com/MotohiroOGAWA/MassEntity.git cores/MassEntity
 git commit -m "Add MassEntity as submodule"
 ```
 
