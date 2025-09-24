@@ -335,7 +335,6 @@ class MSDataset:
 
         ps = PeakSeries(data, offsets, peak_meta, index=index, device=device)
         return MSDataset(spectrum_meta, ps)
-    
 
 class SpectrumRecord:
     """
@@ -419,6 +418,70 @@ class SpectrumRecord:
     def is_int_mz(self) -> bool:
         """Check if all m/z values are integers."""
         return torch.all(self.peaks.data[:, 0] % 1 == 0)
+
+    def normalize(self, scale: float = 1.0, in_place: bool = False) -> SpectrumRecord:
+        """
+        Normalize intensities of this spectrum's peaks.
+
+        Args:
+            scale (float): Scale factor for normalization (default=1.0).
+            in_place (bool): If True, modify peaks in place. If False, return a new SpectrumPeaks.
+
+        Returns:
+            SpectrumRecord: Normalized spectrum (if in_place=False).
+        """
+        if in_place:
+            data = self
+        else:
+            data = self.copy()
+        data.peaks.normalize(scale=scale, in_place=True)
+        
+        if in_place:
+            return self
+        else:
+            return data
+    
+    def sort_by_mz(self, ascending: bool = True, in_place: bool = False) -> SpectrumRecord:
+        """
+        Sort peaks by m/z values.
+
+        Args:
+            in_place (bool): If True, sort peaks in place. If False, return a new SpectrumPeaks.
+
+        Returns:
+            SpectrumRecord: Sorted spectrum (if in_place=False).
+        """
+        if in_place:
+            data = self
+        else:
+            data = self.copy()
+        data.peaks.sort_by_mz(ascending=ascending, in_place=True)
+        
+        if in_place:
+            return self
+        else:
+            return data
+        
+    def sort_by_intensity(self, ascending: bool = False, in_place: bool = False) -> SpectrumRecord:
+        """
+        Sort peaks by intensity values.
+
+        Args:
+            in_place (bool): If True, sort peaks in place. If False, return a new SpectrumPeaks.
+
+        Returns:
+            SpectrumRecord: Sorted spectrum (if in_place=False).
+        """
+        if in_place:
+            data = self
+        else:
+            data = self.copy()
+        data.peaks.sort_by_intensity(ascending=ascending, in_place=True)
+        
+        if in_place:
+            return self
+        else:
+            return data
 
     # ------------------- utility -------------------
     def copy(self) -> SpectrumRecord:

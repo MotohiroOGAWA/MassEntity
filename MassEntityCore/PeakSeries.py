@@ -767,7 +767,7 @@ class SpectrumPeaks:
     
     def sort_by_intensity(
         self,
-        ascending: bool = True,
+        ascending: bool = False,
         in_place: bool = False
     ) -> "SpectrumPeaks":
         """
