@@ -20,5 +20,5 @@ dependencies = [
     "pyarrow"
 ]
 
-[tool.setuptools.packages.find]
-where = ["msentity"]
+[tool.setuptools]
+packages = ["msentity"]
