@@ -3,11 +3,11 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "MassEntity"
+name = "msentity"
 version = "0.1.0"
 description = "Core data structures and utilities for mass spectrometry analysis"
 authors = [
-    { name = "Motohiro Ogawa", email = "makakonto0503@outlook.jp" }
+    { name = "Motohiro Ogawa" }
 ]
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,4 +21,4 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["msentity"]

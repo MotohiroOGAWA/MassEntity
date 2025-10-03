@@ -3,14 +3,14 @@ import unittest
 import torch
 import pandas as pd
 import tempfile
-from MassEntity.MassEntityIO.msp import read_msp, write_msp
-from MassEntity.MassEntityCore import MSDataset, PeakSeries
+from msentity.io.msp import read_msp, write_msp
+from msentity.core import MSDataset, PeakSeries
 
 
 class TestReadMSP(unittest.TestCase):
     def setUp(self):
         # --- Create a dummy MSP file ---
-        self.test_file = os.path.join("MassEntity", "tests", "TestMassEntityIO", "dummy_files", "test_dummy.msp")
+        self.test_file = os.path.join("tests", "TestMassEntityIO", "dummy_files", "test_dummy.msp")
 
     def test_read_msp_file(self):
         # --- Read file ---

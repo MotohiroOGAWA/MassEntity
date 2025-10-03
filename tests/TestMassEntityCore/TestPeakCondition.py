@@ -1,8 +1,8 @@
 import unittest
 import torch
 import pandas as pd
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
-from MassEntity.MassEntityCore.PeakCondition import *
+from msentity.core.PeakSeries import PeakSeries
+from msentity.core.PeakCondition import *
 
 
 class TestPeakCondition(unittest.TestCase):

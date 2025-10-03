@@ -2,9 +2,9 @@ import unittest
 import torch
 import pandas as pd
 
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
-from MassEntity.MassEntityCore.MSDataset import MSDataset, SpectrumRecord
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries, SpectrumPeaks
+from msentity.core.PeakSeries import PeakSeries
+from msentity.core.MSDataset import MSDataset, SpectrumRecord
+from msentity.core.PeakSeries import PeakSeries, SpectrumPeaks
 
 
 class TestSpectrumRecord(unittest.TestCase):

@@ -33,6 +33,12 @@ git add cores/MassEntity
 git commit -m "Update MassEntity submodule"
 ```
 
+### Install from GitHub (Recommended for Users)
+You can install **MassEntity** directly from the GitHub repository:
+```bash
+pip install git+https://github.com/MotohiroOGAWA/MassEntity.git
+```
+
 ## ⚙️ Installation (Editable Mode)
 To install MassEntity into your Python environment for development, run:
 ```bash

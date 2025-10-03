@@ -1,7 +1,7 @@
 import time
 import torch
 import pandas as pd
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
+from msentity.core.PeakSeries import PeakSeries
 
 
 def make_peakseries(n_spectra: int, peaks_per_spectrum: int, device: str = "cpu") -> PeakSeries:

@@ -1,7 +1,7 @@
 import unittest
 import torch
 import pandas as pd
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries, SpectrumPeaks
+from msentity.core.PeakSeries import PeakSeries, SpectrumPeaks
 
 
 class TestPeakSeries(unittest.TestCase):

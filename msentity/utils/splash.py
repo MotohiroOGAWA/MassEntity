@@ -3,7 +3,7 @@ try:
 except ImportError:
     print("splash is not installed.")
 
-from ..MassEntityCore import *
+from ..core import *
 
 def compute_splash(peaks: SpectrumPeaks) -> str:
     _peaks = [(float(peak.mz), float(peak.intensity)) for peak in peaks]

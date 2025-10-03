@@ -1,9 +1,9 @@
 import unittest
 import torch
 import pandas as pd
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
-from MassEntity.MassEntityCore.MSDataset import MSDataset
-from MassEntity.MassEntityCore.SpecCondition import *  # SpecCondition, AllIntegerMZ
+from msentity.core.PeakSeries import PeakSeries
+from msentity.core.MSDataset import MSDataset
+from msentity.core.SpecCondition import *  # SpecCondition, AllIntegerMZ
 
 
 class TestSpecCondition(unittest.TestCase):

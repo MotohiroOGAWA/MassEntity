@@ -3,8 +3,8 @@ import os
 import torch
 import pandas as pd
 import numpy as np
-from MassEntity.MassEntityCore.PeakSeries import PeakSeries
-from MassEntity.MassEntityCore.MSDataset import MSDataset
+from msentity.core.PeakSeries import PeakSeries
+from msentity.core.MSDataset import MSDataset
 
 
 class TestMSDataset(unittest.TestCase):
@@ -75,7 +75,7 @@ class TestMSDataset(unittest.TestCase):
     def test_getitem_variants(self):
         # Case 1: integer index -> SpectrumRecord
         rec = self.ds[0]
-        from MassEntity.MassEntityCore.MSDataset import SpectrumRecord
+        from msentity.core.MSDataset import SpectrumRecord
         self.assertIsInstance(rec, SpectrumRecord)
         self.assertEqual(rec["spectrum_id"], "s1")
 
@@ -141,7 +141,7 @@ class TestMSDataset(unittest.TestCase):
         rec = self.ds[1]
 
         # Should be SpectrumRecord
-        from MassEntity.MassEntityCore.MSDataset import SpectrumRecord
+        from msentity.core.MSDataset import SpectrumRecord
         self.assertIsInstance(rec, SpectrumRecord)
 
         # Metadata should match spectrum 2

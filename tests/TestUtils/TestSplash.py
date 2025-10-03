@@ -1,13 +1,13 @@
 import unittest
 import os
-from MassEntity.MassEntityCore import *
-from MassEntity.MassEntityIO.msp import read_msp
-from MassEntity.utils.splash import *
+from msentity.core import *
+from msentity.io.msp import read_msp
+from msentity.utils.splash import *
 
 class TestSplash(unittest.TestCase):
     def setUp(self):
         # --- Create a dummy MSP file ---
-        self.test_file = os.path.join("MassEntity", "tests", "TestMassEntityIO", "dummy_files", "test_dummy.msp")
+        self.test_file = os.path.join("tests", "TestMassEntityIO", "dummy_files", "test_dummy.msp")
         self.ds = read_msp(self.test_file)
 
     def test_add_splash_to_dataset(self):
