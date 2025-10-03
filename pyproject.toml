@@ -20,8 +20,8 @@ dependencies = [
     "pyarrow"
 ]
 
-[tool.setuptools]
-packages = ["msentity"]
+[tool.setuptools.packages.find]
+where = ["msentity"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
