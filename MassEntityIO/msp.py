@@ -12,7 +12,7 @@ from .ItemParser import ItemParser
 from ..MassEntityCore import MSDataset, PeakSeries
     
 
-def read_msp(filepath, encoding='utf-8') -> MSDataset:
+def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=False) -> MSDataset:
     file_size = os.path.getsize(filepath)
     processed_size = 0
     line_count = 1
@@ -27,6 +27,8 @@ def read_msp(filepath, encoding='utf-8') -> MSDataset:
     text = ""
     error_text = ""
     error_flag = False
+
+    header_map = {}
     
     with open(filepath, 'r', encoding=encoding) as f:
         peak_flag = False
@@ -71,7 +73,9 @@ def read_msp(filepath, encoding='utf-8') -> MSDataset:
                         peak.append([mz, intensity])
                     else:
                         k,v = item_parser.parse(line)
+                        ori_k = line.split(":", 1)[0].strip()
                         if k not in cols:
+                            header_map[k] = ori_k
                             cols[k] = [""] * record_cnt
 
                         if k == "Comments":
@@ -110,7 +114,7 @@ def read_msp(filepath, encoding='utf-8') -> MSDataset:
             offsets.append(len(all_peak))
             max_peak_cnt = max(max_peak_cnt, len(peak))
         
-    if not 'IdxOri' in cols:
+    if set_idx_ori:
         cols['IdxOri'] = list(range(row_cnt))
 
     if error_text != '':
@@ -125,9 +129,48 @@ def read_msp(filepath, encoding='utf-8') -> MSDataset:
     spectrum_meta = pd.DataFrame(cols)
     ms_dataset = MSDataset(spectrum_meta, peak_series)
 
-    return ms_dataset
+    if return_header_map:
+        return ms_dataset, header_map
+    else:
+        return ms_dataset
 
+def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, encoding='utf-8'):
+    """
+    Save MSDataset to MSP file.
 
+    Args:
+        path (str): Output MSP file path.
+    """
+    df = dataset.meta_copy
+    if headers is None:
+        headers = dataset._columns
+
+    _headers = []
+    for c in headers:
+        if c not in df.columns:
+            continue
+        if c == "IdxOri":
+            continue
+        if c == "NumPeaks":
+            continue
+        _headers.append(c)
+    
+    headers = _headers.copy()
+    for c in headers:
+        if c not in header_map.keys():
+            header_map[c] = c
+    with open(path, "w", encoding=encoding) as outfile:
+        for record in dataset:
+            for key in headers:
+                value = str(record[key])
+                if value == "nan":
+                    value = ""
+                outfile.write(f"{header_map[key]}: {value}\n")
+
+            outfile.write(f"NumPeaks: {record.n_peaks}\n")
+            for peak in record.peaks:
+                outfile.write(f"{peak.mz} {peak.intensity}\n")
+            outfile.write("\n")
     
 def normalize_column(value:str) -> str:
     result = value.replace("_", "").replace("/", "").lower()

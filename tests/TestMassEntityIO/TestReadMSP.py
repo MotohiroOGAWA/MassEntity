@@ -2,9 +2,8 @@ import os
 import unittest
 import torch
 import pandas as pd
-# from MassEntity.MassEntityCore import MSDataset, PeakSeries
-# from MassEntity.MassEntityIO import read_msp
-from MassEntity.MassEntityIO.msp import read_msp
+import tempfile
+from MassEntity.MassEntityIO.msp import read_msp, write_msp
 from MassEntity.MassEntityCore import MSDataset, PeakSeries
 
 
@@ -49,6 +48,51 @@ class TestReadMSP(unittest.TestCase):
         first_spectrum_data = ps[0].data
         self.assertAlmostEqual(first_spectrum_data[0, 0].item(), 91.0542, places=4)
         self.assertAlmostEqual(first_spectrum_data[-1, 0].item(), 246.1125, places=4)
+
+    def test_write_and_read_back(self):
+        # Read dummy dataset
+        ds = read_msp(self.test_file)
+
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
+            out_path = os.path.join(tmpdir, "out.msp")
+
+            # Write dataset to MSP
+            write_msp(ds, out_path)
+
+            # Read back the written file
+            ds2 = read_msp(out_path)
+
+            # Compare dataset length and columns
+            self.assertEqual(len(ds), len(ds2))
+            self.assertListEqual(ds.columns, ds2.columns)
+
+            # Compare metadata values
+            meta1 = ds.meta_copy
+            meta2 = ds2.meta_copy
+            self.assertEqual(meta1.loc[0, "Name"], meta2.loc[0, "Name"])
+            self.assertAlmostEqual(float(meta1.loc[0, "PrecursorMZ"]),
+                                   float(meta2.loc[0, "PrecursorMZ"]),
+                                   places=4)
+
+            # Compare total number of peaks
+            self.assertEqual(ds.peaks.n_all_peaks, ds2.peaks.n_all_peaks)
+
+    def test_write_with_header_map_from_read(self):
+        # Read dataset and get header_map
+        ds, header_map = read_msp(self.test_file, return_header_map=True)
+
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
+            out_path = os.path.join(tmpdir, "out_header.msp")
+
+            # Write using header_map obtained from read_msp
+            write_msp(ds, out_path, header_map=header_map)
+
+            # Read file again and get new header_map
+            ds2, header_map2 = read_msp(out_path, return_header_map=True)
+
+            # Dataset consistency check
+            self.assertEqual(len(ds), len(ds2))
+            self.assertListEqual(ds.columns, ds2.columns)
 
 if __name__ == "__main__":
     unittest.main()

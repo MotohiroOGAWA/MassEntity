@@ -37,6 +37,21 @@ class ItemParser:
         parts = re.split(r'[_\s]+', name)
         resuslt = ''.join(part.strip().capitalize() for part in parts if part)
         return resuslt
+    
+    @classmethod
+    def to_upper_snake(cls, key: str) -> str:
+        """
+        Convert a string to UPPER_SNAKE_CASE.
+        Example: 'canonicalSmiles' -> 'CANONICAL_SMILES'
+        """
+        # Step 1: Convert to CamelCase
+        capitalized_key = cls.capitalize(key)
+
+        # Step 2: Insert underscores before capital letters (except first one)
+        underscored = re.sub(r'(?<!^)([A-Z])', r'_\1', capitalized_key)
+
+        # Step 3: Uppercase
+        return underscored.upper()
 
     @classmethod
     def _normalize_key(cls, key: str) -> str:

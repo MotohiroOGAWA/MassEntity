@@ -29,6 +29,11 @@ class MSDataset:
         self._columns = columns  # None = all columns
 
     @property
+    def columns(self) -> List[str]:
+        """Return the list of columns in this MSDataset view."""
+        return list(self._columns) if self._columns is not None else list(self._spectrum_meta_ref.columns)
+
+    @property
     def meta_copy(self) -> pd.DataFrame:
         """
         Return spectrum-level metadata view (row selection by PeakSeries index,
@@ -142,6 +147,16 @@ class MSDataset:
     def __len__(self) -> int:
         """Number of spectra in this dataset (rows of spectrum_meta)."""
         return len(self._peak_series)
+    
+    def __iter__(self):
+        """
+        Iterate over spectra in this MSDataset, yielding SpectrumRecord.
+        Example:
+            for rec in ms_dataset:
+                print(rec.n_peaks, rec["Name"])
+        """
+        for i in range(len(self)):
+            yield self[i]
 
     @property
     def shape(self) -> tuple[int, int]:
