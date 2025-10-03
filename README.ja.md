@@ -9,7 +9,7 @@
 ---
 
 MassEntity は質量分析データを扱うための Python ライブラリです。  
-Git サブモジュールとして組み込むことや、開発モードでのインストールが可能です。
+pip を使って GitHub から直接インストールすることも、開発用にプロジェクトへ Git サブモジュールとして統合することもできます。
 
 ---
 
@@ -19,36 +19,26 @@ Git サブモジュールとして組み込むことや、開発モードでの�
 
 ```bash
 # プロジェクトのルートディレクトリで
-git submodule add https://github.com/MotohiroOGAWA/MassEntity.git cores/MassEntity
+git submodule add https://github.com/MotohiroOGAWA/MassEntity.git ./MassEntity
 git commit -m "Add MassEntity as submodule"
 ```
 
-## 🔄 サブモジュールの更新方法
+## ⚙️ GitHub からインストール（ユーザー向け推奨）
+MassEntity は GitHub リポジトリから直接インストールできます。
 ```bash
-cd cores/MassEntity
-git checkout main
-git pull origin main
-cd ../..
-git add cores/MassEntity
-git commit -m "Update MassEntity submodule"
+pip install git+https://github.com/MotohiroOGAWA/MassEntity.git
 ```
-
-## ⚙️ インストール（開発モード）
-MassEntity を Python 環境にインストールするには以下を実行します。
-```bash
-cd cores/MassEntity
-pip install -e .
-```
--e オプション（editable mode）を付けることで、ソースコードを編集した変更が即時に反映されます。
 
 
 ## 🧪 テストの実行
-MassEntity が正しく動作するか確認するためにテストを実行できます。
+MassEntity が正しく動作するか確認するために、テストを実行できます。
 
 ### Python から実行する場合
-
-python -m MassEntity.run_tests
+```
+python -m run_tests
+```
 
 ### シェルスクリプトを使う場合
-
-./MassEntity/run_tests.sh
+```bash
+./run_tests.sh
+```
