@@ -22,3 +22,6 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["msentity"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
