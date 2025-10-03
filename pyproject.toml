@@ -20,8 +20,11 @@ dependencies = [
     "pyarrow"
 ]
 
-[tool.setuptools.packages.find]
-where = ["msentity"]
+[tool.mypy]
+files = ["msentity"]
+show_error_codes = true
+strict = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
