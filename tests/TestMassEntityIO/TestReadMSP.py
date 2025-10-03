@@ -3,7 +3,7 @@ import unittest
 import torch
 import pandas as pd
 import tempfile
-from msentity.io.msp import read_msp, write_msp
+from msentity.io.msp import read_msp, write_msp, stream_msp
 from msentity.core import MSDataset, PeakSeries
 
 
@@ -48,6 +48,11 @@ class TestReadMSP(unittest.TestCase):
         first_spectrum_data = ps[0].data
         self.assertAlmostEqual(first_spectrum_data[0, 0].item(), 91.0542, places=4)
         self.assertAlmostEqual(first_spectrum_data[-1, 0].item(), 246.1125, places=4)
+
+    def test_stream_msp_file(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
+            out_path = os.path.join(tmpdir, "out.msp")
+            stream_msp(self.test_file, out_path, add_splash=True)  # Just ensure no exceptions are raised
 
     def test_write_and_read_back(self):
         # Read dummy dataset

@@ -133,6 +133,116 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
         return ms_dataset, header_map
     else:
         return ms_dataset
+    
+from splash import *
+def stream_msp(filepath, outfile, encoding='utf-8', add_splash=True) -> MSDataset:
+    file_size = os.path.getsize(filepath)
+    processed_size = 0
+    line_count = 1
+    item_parser = ItemParser()
+
+    cols = {} # Create a data list for each column
+    current_lines = []
+    num_peaks_line = 0
+    peak_lines = []
+
+    all_peak = []
+    offsets = [0]
+    peak = []
+    max_peak_cnt = 0
+    record_cnt = 1
+    text = ""
+    error_text = ""
+    error_flag = False
+
+    header_map = {}
+    
+    with open(outfile, 'w', encoding=encoding) as wf:
+        with open(filepath, 'r', encoding=encoding) as f:
+            peak_flag = False
+            with tqdm(total=file_size, desc="Read msp file", mininterval=0.5) as pbar:
+                for line in f.readlines():
+                    try:
+                        if not peak_flag and line == '\n':
+                            continue
+
+                        text += line
+
+                        if peak_flag and line == '\n':
+                            peak_flag = False
+
+                            if not error_flag:
+                                if add_splash:
+                                    _peaks = [(float(p[0]), float(p[1])) for p in peak]
+                                    spectrum = Spectrum(_peaks, SpectrumType.MS)
+                                    splash_id = Splash().splash(spectrum)
+                                    current_lines.append(f"SPLASH: {splash_id}")
+
+                                wf.writelines(current_lines)
+                                wf.write("\n")
+                                wf.write(f"{num_peaks_line}\n")
+                                wf.writelines(peak_lines)
+                                wf.write("\n")
+                                    
+                            else:
+                                error_text += f"Record: {record_cnt}\n" + f"Rows: {line_count}\n"
+                                error_text += text + '\n\n'
+                                error_flag = False
+                                for k in cols:
+                                    if len(cols[k]) == record_cnt:
+                                        cols[k].pop()
+                                    elif len(cols[k]) > record_cnt:
+                                        error_text += f"Error: '{k}' has more data than the record count.\n"
+                            text = ""
+                            peak = []
+                            record_cnt += 1
+                            current_lines = []
+                            peak_lines = []
+                            num_peaks_line = ""
+
+                        elif peak_flag:
+                            # Handling cases where peaks are tab-separated or space-separated
+                            if len(line.strip().split('\t')) == 2:
+                                mz, intensity = line.strip().split('\t')
+                            elif len(line.strip().split(' ')) == 2:
+                                mz, intensity = line.strip().split(' ')
+                            else:
+                                raise ValueError(f"Error: '{line.strip()}' was not split correctly.")
+                            mz, intensity = float(mz), float(intensity)
+                            peak.append([mz, intensity])
+                            peak_lines.append(line)
+                        else:
+                            k,v = item_parser.parse(line)
+                            ori_k = line.split(":", 1)[0].strip()
+                            
+                            if k == "NumPeaks":
+                                peak_flag = True
+                                num_peaks_line = line.strip()
+                            else:
+                                current_lines.append(line)
+
+                        
+                        line_count += 1
+                        processed_size = len(line.encode(encoding)) + 1
+                        pbar.update(processed_size)
+                    except Exception as e:
+                        text = 'Error: ' + str(e) + '\n' + text
+                        error_flag = True
+                        pass
+
+            if(len(current_lines) > 0):
+                wf.writelines(current_lines)
+            if(len(peak_lines) > 0):
+                wf.write(f"{num_peaks_line}\n")
+                wf.writelines(peak_lines)
+                wf.write("\n")
+        
+    if error_text != '':
+        from datetime import datetime
+        now = datetime.now().strftime("%Y%m%d%H%M%S")
+        with open(os.path.splitext(filepath)[0] + f"_error_{now}.txt", "w") as f:
+            f.write(error_text)
+
 
 def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, encoding='utf-8'):
     """
