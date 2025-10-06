@@ -5,6 +5,7 @@ import os
 from tqdm import tqdm
 import warnings
 from typing import Tuple
+from datetime import datetime
 
 import re
 
@@ -29,6 +30,18 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
     error_flag = False
 
     header_map = {}
+
+    now = datetime.now().strftime("%Y%m%d%H%M%S")
+    error_filename = os.path.splitext(filepath)[0] + f"_error_{now}"
+    cnt = 1
+    if os.path.exists(error_filename + ".txt"):
+        while True:
+            if not os.path.exists(f'{error_filename}_{cnt}.txt'):
+                error_filename = f'{error_filename}_{cnt}'
+                break
+            else:
+                cnt += 1
+    error_file_path = error_filename + ".txt"
     
     with open(filepath, 'r', encoding=encoding) as f:
         peak_flag = False
@@ -48,7 +61,7 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
                             offsets.append(len(all_peak))
                             max_peak_cnt = max(max_peak_cnt, len(peak))
                         else:
-                            error_text += f"Record: {record_cnt}\n" + f"Rows: {line_count}\n"
+                            error_text = f"Record: {record_cnt}\n" + f"Rows: {line_count}\n"
                             error_text += text + '\n\n'
                             error_flag = False
                             for k in cols:
@@ -56,6 +69,12 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
                                     cols[k].pop()
                                 elif len(cols[k]) > record_cnt:
                                     error_text += f"Error: '{k}' has more data than the record count.\n"
+                            if not os.path.exists(error_file_path):
+                                with open(error_file_path, "w") as ef:
+                                    ef.write('')
+                            with open(error_file_path, "a") as ef:
+                                ef.write(error_text)
+                            error_text = ""
                         text = ""
                         peak = []
                         record_cnt += 1
@@ -118,9 +137,10 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
         cols['IdxOri'] = list(range(row_cnt))
 
     if error_text != '':
-        from datetime import datetime
-        now = datetime.now().strftime("%Y%m%d%H%M%S")
-        with open(os.path.splitext(filepath)[0] + f"_error_{now}.txt", "w") as f:
+        if not os.path.exists(error_file_path):
+            with open(error_file_path, "w") as f:
+                f.write('')
+        with open(error_file_path, "a") as f:
             f.write(error_text)
 
     peaks = torch.tensor(all_peak)
