@@ -23,7 +23,9 @@ def read_msp(filepath,
              return_header_map=False, 
              set_idx_ori=False, 
              error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
-             error_log_file=None) -> MSDataset:
+             error_log_file=None,
+             show_progress=True,
+             ) -> MSDataset:
     file_size = os.path.getsize(filepath)
     processed_size = 0
     line_count = 1
@@ -58,104 +60,108 @@ def read_msp(filepath,
         raise ValueError(f"Error: Directory '{os.path.dirname(filepath)}' does not exist.")
     else:
         error_file_path = error_log_file
+
+    pbar = tqdm(total=file_size, desc=f"[Read msp]{os.path.basename(filepath)}", mininterval=0.5) if show_progress else None
     
     with open(filepath, 'r', encoding=encoding) as f:
         peak_flag = False
-        with tqdm(total=file_size, desc="Read msp file", mininterval=0.5) as pbar:
-            for line in f.readlines():
-                try:
-                    if not peak_flag and line == '\n':
-                        continue
+        for line in f.readlines():
+            try:
+                if not peak_flag and line == '\n':
+                    continue
 
-                    text += line
+                text += line
 
-                    if peak_flag and line == '\n':
-                        peak_flag = False
+                if peak_flag and line == '\n':
+                    peak_flag = False
 
-                        if not error_flag:
-                            all_peak.extend(peak)
-                            offsets.append(len(all_peak))
-                            max_peak_cnt = max(max_peak_cnt, len(peak))
-                            success_cnt += 1
-                            for k in cols:
-                                cols[k].append("")
-                        else:
-                            if error_log_level != ErrorLogLevel.NONE:
-                                error_text = _get_error_text(record_cnt, line_count, text, cols, error_log_level)
-                                
-                                if not os.path.exists(error_file_path):
-                                    with open(error_file_path, "w") as ef:
-                                        ef.write('')
-                                with open(error_file_path, "a") as ef:
-                                    ef.write(error_text)
-                            error_text = ""
-                            error_flag = False
-                            for k in cols:
-                                if len(cols[k]) >= success_cnt + 1:
-                                    cols[k][-1] = ""
-                        text = ""
-                        peak = []
-                        record_cnt += 1
+                    if not error_flag:
+                        all_peak.extend(peak)
+                        offsets.append(len(all_peak))
+                        max_peak_cnt = max(max_peak_cnt, len(peak))
+                        success_cnt += 1
                         for k in cols:
-                            if len(cols[k]) < success_cnt+1:
-                                cols[k] = cols[k] + [""] * (success_cnt+1 - len(cols[k]))
-                        pbar.set_postfix_str({"Success": f'{success_cnt}/{record_cnt}'})
-                    elif peak_flag:
-                        # Handling cases where peaks are tab-separated or space-separated
-                        if len(line.strip().split('\t')) == 2:
-                            mz, intensity = line.strip().split('\t')
-                        elif len(line.strip().split(' ')) == 2:
-                            mz, intensity = line.strip().split(' ')
-                        else:
-                            raise ValueError(f"Error: '{line.strip()}' was not split correctly.")
-                        mz, intensity = float(mz), float(intensity)
-                        peak.append([mz, intensity])
+                            cols[k].append("")
                     else:
-                        k,v = item_parser.parse(line)
-                        ori_k = line.split(":", 1)[0].strip()
-                        if k not in cols:
-                            header_map[k] = ori_k
-                            cols[k] = [""] * record_cnt
+                        if error_log_level != ErrorLogLevel.NONE:
+                            error_text = _get_error_text(record_cnt, line_count, text, cols, error_log_level)
+                            
+                            if not os.path.exists(error_file_path):
+                                with open(error_file_path, "w") as ef:
+                                    ef.write('')
+                            with open(error_file_path, "a") as ef:
+                                ef.write(error_text)
+                        error_text = ""
+                        error_flag = False
+                        for k in cols:
+                            if len(cols[k]) >= success_cnt + 1:
+                                cols[k][-1] = ""
+                    text = ""
+                    peak = []
+                    record_cnt += 1
+                    for k in cols:
+                        if len(cols[k]) < success_cnt+1:
+                            cols[k] = cols[k] + [""] * (success_cnt+1 - len(cols[k]))
+                    if pbar is not None:
+                        pbar.set_postfix_str({"Success": f'{success_cnt}/{record_cnt}'})
+                elif peak_flag:
+                    # Handling cases where peaks are tab-separated or space-separated
+                    if len(line.strip().split('\t')) == 2:
+                        mz, intensity = line.strip().split('\t')
+                    elif len(line.strip().split(' ')) == 2:
+                        mz, intensity = line.strip().split(' ')
+                    else:
+                        raise ValueError(f"Error: '{line.strip()}' was not split correctly.")
+                    mz, intensity = float(mz), float(intensity)
+                    peak.append([mz, intensity])
+                else:
+                    k,v = item_parser.parse(line)
+                    ori_k = line.split(":", 1)[0].strip()
+                    if k not in cols:
+                        header_map[k] = ori_k
+                        cols[k] = [""] * record_cnt
 
-                        if k == "Comments":
-                            # Extract computed SMILES from comments
-                            pattern = r'"computed SMILES=([^"]+)"'
-                            match = re.search(pattern, v)
-                            if match:
-                                if "SMILES" not in cols:
-                                    cols["SMILES"] = [""] * record_cnt
-                                cols["SMILES"][-1] = match.group(1)
-                        else:
-                            cols[k][-1] = v
-                        if k == "NumPeaks":
-                            peak_flag = True
-                    
-                    line_count += 1
-                    processed_size = len(line.encode(encoding)) + 1
+                    if k == "Comments":
+                        # Extract computed SMILES from comments
+                        pattern = r'"computed SMILES=([^"]+)"'
+                        match = re.search(pattern, v)
+                        if match:
+                            if "SMILES" not in cols:
+                                cols["SMILES"] = [""] * record_cnt
+                            cols["SMILES"][-1] = match.group(1)
+                    else:
+                        cols[k][-1] = v
+                    if k == "NumPeaks":
+                        peak_flag = True
+                
+                line_count += 1
+                processed_size = len(line.encode(encoding)) + 1
+                if pbar is not None:
                     pbar.update(processed_size)
-                except Exception as e:
-                    text = 'Error: ' + str(e).replace('\n', '\\n') + '\n' + text
-                    error_flag = True
-                    pass
+            except Exception as e:
+                text = 'Error: ' + str(e).replace('\n', '\\n') + '\n' + text
+                error_flag = True
+                pass
 
-            # Remove last empty rows in metadata
+        # Remove last empty rows in metadata
+        for k in cols:
+            if cols[k][-1] != "":
+                break
+        else:
             for k in cols:
-                if cols[k][-1] != "":
-                    break
-            else:
-                for k in cols:
-                    del cols[k][-1]
-            row_cnt = len(cols[list(cols.keys())[0]])
+                del cols[k][-1]
+        row_cnt = len(cols[list(cols.keys())[0]])
 
-            # Append last peak data if file doesn't end with a blank line
-            if line != '\n' and (len(offsets) - 1 < row_cnt):
-                all_peak.extend(peak)
-                offsets.append(len(all_peak))
-                max_peak_cnt = max(max_peak_cnt, len(peak))
-                record_cnt += 1
-                success_cnt += 1
+        # Append last peak data if file doesn't end with a blank line
+        if line != '\n' and (len(offsets) - 1 < row_cnt):
+            all_peak.extend(peak)
+            offsets.append(len(all_peak))
+            max_peak_cnt = max(max_peak_cnt, len(peak))
+            record_cnt += 1
+            success_cnt += 1
 
-            pbar.set_postfix_str({"Success": f'{success_cnt}/{record_cnt}'})
+        if pbar is not None:
+            pbar.set_postfix_str({"Success": f'{success_cnt}/{max(record_cnt-1,0)}'})
             
         if set_idx_ori:
             cols['IdxOri'] = list(range(row_cnt))

@@ -15,7 +15,7 @@ class TestReadMSP(unittest.TestCase):
 
     def test_read_msp_file(self):
         # --- Read file ---
-        ds = read_msp(self.test_file)
+        ds = read_msp(self.test_file, show_progress=False)
 
         # Check type
         self.assertIsInstance(ds, MSDataset)
@@ -55,7 +55,7 @@ class TestReadMSP(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file_with_error)) as tmpdir:
             error_log_file = os.path.join(tmpdir, "error_log.txt")
             # ds = read_msp(self.test_file_with_error, error_log_level=2)
-            ds = read_msp(self.test_file_with_error, error_log_level=2, error_log_file=error_log_file)
+            ds = read_msp(self.test_file_with_error, error_log_level=2, error_log_file=error_log_file, show_progress=False)
 
         # Check type
         self.assertIsInstance(ds, MSDataset)
@@ -77,7 +77,7 @@ class TestReadMSP(unittest.TestCase):
 
     def test_write_and_read_back(self):
         # Read dummy dataset
-        ds = read_msp(self.test_file)
+        ds = read_msp(self.test_file, show_progress=False)
 
         with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
             out_path = os.path.join(tmpdir, "out.msp")
@@ -86,7 +86,7 @@ class TestReadMSP(unittest.TestCase):
             write_msp(ds, out_path)
 
             # Read back the written file
-            ds2 = read_msp(out_path)
+            ds2 = read_msp(out_path, show_progress=False)
 
             # Compare dataset length and columns
             self.assertEqual(len(ds), len(ds2))
@@ -105,7 +105,7 @@ class TestReadMSP(unittest.TestCase):
 
     def test_write_with_header_map_from_read(self):
         # Read dataset and get header_map
-        ds, header_map = read_msp(self.test_file, return_header_map=True)
+        ds, header_map = read_msp(self.test_file, return_header_map=True, show_progress=False)
 
         with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
             out_path = os.path.join(tmpdir, "out_header.msp")
@@ -114,7 +114,7 @@ class TestReadMSP(unittest.TestCase):
             write_msp(ds, out_path, header_map=header_map)
 
             # Read file again and get new header_map
-            ds2, header_map2 = read_msp(out_path, return_header_map=True)
+            ds2, header_map2 = read_msp(out_path, return_header_map=True, show_progress=False)
 
             # Dataset consistency check
             self.assertEqual(len(ds), len(ds2))
