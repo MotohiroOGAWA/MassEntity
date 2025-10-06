@@ -5,18 +5,14 @@ import os
 from tqdm import tqdm
 import warnings
 from typing import Tuple
-from enum import IntEnum
 from datetime import datetime
 
 import re
 
 from .ItemParser import ItemParser
 from ..core import MSDataset, PeakSeries
+from .constants import ErrorLogLevel
 
-class ErrorLogLevel(IntEnum):
-    NONE = 0    # Do not write any error log
-    BASIC = 1   # Write line number and error message only
-    DETAIL = 2  # Write BASIC info + record content that caused the error
 
 def read_msp(filepath, 
              encoding='utf-8', 
