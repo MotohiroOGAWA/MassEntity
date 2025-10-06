@@ -11,6 +11,7 @@ class TestReadMSP(unittest.TestCase):
     def setUp(self):
         # --- Create a dummy MSP file ---
         self.test_file = os.path.join("tests", "TestMassEntityIO", "dummy_files", "test_dummy.msp")
+        self.test_file_with_error = os.path.join("tests", "TestMassEntityIO", "dummy_files", "test_dummy_with_error.msp")
 
     def test_read_msp_file(self):
         # --- Read file ---
@@ -31,7 +32,7 @@ class TestReadMSP(unittest.TestCase):
             self.assertIn(col, meta.columns)
 
         # Spot check values
-        self.assertEqual(meta.loc[0, "Name"], "MassSpecGymID0000001")
+        self.assertEqual(meta.loc[0, "Name"], "MassSpecID0000001")
         self.assertAlmostEqual(float(meta.loc[0, "PrecursorMZ"]), 288.1225, places=4)
 
         # --- PeakSeries checks ---
@@ -48,6 +49,31 @@ class TestReadMSP(unittest.TestCase):
         first_spectrum_data = ps[0].data
         self.assertAlmostEqual(first_spectrum_data[0, 0].item(), 91.0542, places=4)
         self.assertAlmostEqual(first_spectrum_data[-1, 0].item(), 246.1125, places=4)
+
+    def test_read_msp_file_with_error(self):
+        # --- Read file ---
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file_with_error)) as tmpdir:
+            error_log_file = os.path.join(tmpdir, "error_log.txt")
+            # ds = read_msp(self.test_file_with_error, error_log_level=2)
+            ds = read_msp(self.test_file_with_error, error_log_level=2, error_log_file=error_log_file)
+
+        # Check type
+        self.assertIsInstance(ds, MSDataset)
+
+
+        # --- Spectrum metadata checks ---
+        meta = ds.meta_copy
+        # Expected 5 spectra in the dummy MSP
+        self.assertEqual(len(ds), 3)
+        # Check essential columns
+        expected_cols = ["Name", "PrecursorMZ", "AdductType",
+                         "IonMode", "Formula", "SMILES", "InChIKey"]
+        for col in expected_cols:
+            self.assertIn(col, meta.columns)
+
+        # Spot check values
+        self.assertEqual(meta.loc[0, "Name"], "MassSpecID0000002")
+
 
     def test_write_and_read_back(self):
         # Read dummy dataset

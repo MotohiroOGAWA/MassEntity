@@ -5,14 +5,25 @@ import os
 from tqdm import tqdm
 import warnings
 from typing import Tuple
+from enum import IntEnum
+from datetime import datetime
 
 import re
 
 from .ItemParser import ItemParser
 from ..core import MSDataset, PeakSeries
-    
 
-def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=False) -> MSDataset:
+class ErrorLogLevel(IntEnum):
+    NONE = 0    # Do not write any error log
+    BASIC = 1   # Write line number and error message only
+    DETAIL = 2  # Write BASIC info + record content that caused the error
+
+def read_msp(filepath, 
+             encoding='utf-8', 
+             return_header_map=False, 
+             set_idx_ori=False, 
+             error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
+             error_log_file=None) -> MSDataset:
     file_size = os.path.getsize(filepath)
     processed_size = 0
     line_count = 1
@@ -24,11 +35,29 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
     peak = []
     max_peak_cnt = 0
     record_cnt = 1
+    success_cnt = 0
     text = ""
     error_text = ""
     error_flag = False
 
     header_map = {}
+
+    if error_log_file is None:
+        now = datetime.now().strftime("%Y%m%d%H%M%S")
+        error_filename = os.path.splitext(filepath)[0] + f"_error_{now}"
+        cnt = 1
+        if os.path.exists(error_filename + ".txt"):
+            while True:
+                if not os.path.exists(f'{error_filename}_{cnt}.txt'):
+                    error_filename = f'{error_filename}_{cnt}'
+                    break
+                else:
+                    cnt += 1
+        error_file_path = error_filename + ".txt"
+    elif not os.path.exists(os.path.dirname(filepath)):
+        raise ValueError(f"Error: Directory '{os.path.dirname(filepath)}' does not exist.")
+    else:
+        error_file_path = error_log_file
     
     with open(filepath, 'r', encoding=encoding) as f:
         peak_flag = False
@@ -47,20 +76,30 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
                             all_peak.extend(peak)
                             offsets.append(len(all_peak))
                             max_peak_cnt = max(max_peak_cnt, len(peak))
+                            success_cnt += 1
+                            for k in cols:
+                                cols[k].append("")
                         else:
-                            error_text += f"Record: {record_cnt}\n" + f"Rows: {line_count}\n"
-                            error_text += text + '\n\n'
+                            if error_log_level != ErrorLogLevel.NONE:
+                                error_text = _get_error_text(record_cnt, line_count, text, cols, error_log_level)
+                                
+                                if not os.path.exists(error_file_path):
+                                    with open(error_file_path, "w") as ef:
+                                        ef.write('')
+                                with open(error_file_path, "a") as ef:
+                                    ef.write(error_text)
+                            error_text = ""
                             error_flag = False
                             for k in cols:
-                                if len(cols[k]) == record_cnt:
-                                    cols[k].pop()
-                                elif len(cols[k]) > record_cnt:
-                                    error_text += f"Error: '{k}' has more data than the record count.\n"
+                                if len(cols[k]) >= success_cnt + 1:
+                                    cols[k][-1] = ""
                         text = ""
                         peak = []
                         record_cnt += 1
                         for k in cols:
-                            cols[k].append("")
+                            if len(cols[k]) < success_cnt+1:
+                                cols[k] = cols[k] + [""] * (success_cnt+1 - len(cols[k]))
+                        pbar.set_postfix_str({"Success": f'{success_cnt}/{record_cnt}'})
                     elif peak_flag:
                         # Handling cases where peaks are tab-separated or space-separated
                         if len(line.strip().split('\t')) == 2:
@@ -95,33 +134,39 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
                     processed_size = len(line.encode(encoding)) + 1
                     pbar.update(processed_size)
                 except Exception as e:
-                    text = 'Error: ' + str(e) + '\n' + text
+                    text = 'Error: ' + str(e).replace('\n', '\\n') + '\n' + text
                     error_flag = True
                     pass
 
-        # Remove last empty rows in metadata
-        for k in cols:
-            if cols[k][-1] != "":
-                break
-        else:
+            # Remove last empty rows in metadata
             for k in cols:
-                del cols[k][-1]
-        row_cnt = len(cols[list(cols.keys())[0]])
+                if cols[k][-1] != "":
+                    break
+            else:
+                for k in cols:
+                    del cols[k][-1]
+            row_cnt = len(cols[list(cols.keys())[0]])
 
-        # Append last peak data if file doesn't end with a blank line
-        if line != '\n' and (len(offsets) - 1 < row_cnt):
-            all_peak.extend(peak)
-            offsets.append(len(all_peak))
-            max_peak_cnt = max(max_peak_cnt, len(peak))
-        
-    if set_idx_ori:
-        cols['IdxOri'] = list(range(row_cnt))
+            # Append last peak data if file doesn't end with a blank line
+            if line != '\n' and (len(offsets) - 1 < row_cnt):
+                all_peak.extend(peak)
+                offsets.append(len(all_peak))
+                max_peak_cnt = max(max_peak_cnt, len(peak))
+                record_cnt += 1
+                success_cnt += 1
 
-    if error_text != '':
-        from datetime import datetime
-        now = datetime.now().strftime("%Y%m%d%H%M%S")
-        with open(os.path.splitext(filepath)[0] + f"_error_{now}.txt", "w") as f:
-            f.write(error_text)
+            pbar.set_postfix_str({"Success": f'{success_cnt}/{record_cnt}'})
+            
+        if set_idx_ori:
+            cols['IdxOri'] = list(range(row_cnt))
+
+        if (error_log_level != ErrorLogLevel.NONE) and error_text != '':
+            error_text = _get_error_text(record_cnt, line_count, text, cols, error_log_level)
+            if not os.path.exists(error_file_path):
+                with open(error_file_path, "w") as ef:
+                    ef.write('')
+            with open(error_file_path, "a") as ef:
+                ef.write(error_text)
 
     peaks = torch.tensor(all_peak)
     offsets = torch.tensor(offsets)
@@ -133,6 +178,19 @@ def read_msp(filepath, encoding='utf-8', return_header_map=False, set_idx_ori=Fa
         return ms_dataset, header_map
     else:
         return ms_dataset
+    
+def _get_error_text(record_cnt, line_count, text, cols, error_log_level):
+    error_text = f"Record: {record_cnt}\n" + f"Rows: {line_count}\n"
+    for k in cols:
+        if len(cols[k]) == record_cnt:
+            cols[k].pop()
+        elif len(cols[k]) > record_cnt:
+            error_text += f"Error: '{k}' has more data than the record count.\n"
+    if error_log_level == ErrorLogLevel.DETAIL:
+        error_text += text + '\n\n'
+    else:
+        error_text += '\n\n'
+    return error_text
 
 def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, encoding='utf-8'):
     """
