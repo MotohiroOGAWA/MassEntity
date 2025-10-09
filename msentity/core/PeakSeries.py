@@ -665,6 +665,42 @@ class SpectrumPeaks:
     def __repr__(self) -> str:
         return f"SpectrumPeaks(n_peaks={len(self)})"
 
+    def __eq__(self, other: object) -> bool:
+        """
+        Check equality between two SpectrumPeaks objects.
+
+        Two SpectrumPeaks are considered equal if:
+        - Both are SpectrumPeaks instances
+        - Their m/z–intensity tensors are identical (within tolerance)
+        - Their metadata (if present) have the same columns and identical values
+        """
+        if not isinstance(other, SpectrumPeaks):
+            return False
+
+        # --- Compare peak data (m/z, intensity) ---
+        data_equal = (
+            self.data.shape == other.data.shape
+            and torch.allclose(self.data, other.data, atol=1e-8)
+        )
+        if not data_equal:
+            return False
+
+        # --- Compare metadata (if available) ---
+        meta1, meta2 = self.metadata, other.metadata
+        if meta1 is None and meta2 is None:
+            return True
+        if (meta1 is None) != (meta2 is None):
+            return False
+        if set(meta1.columns) != set(meta2.columns):
+            return False
+
+        for col in meta1.columns:
+            s1, s2 = meta1[col], meta2[col]
+            if not s1.equals(s2):
+                return False
+
+        return True
+
     @property
     def device(self) -> torch.device:
         """Return the device of the underlying data tensor."""

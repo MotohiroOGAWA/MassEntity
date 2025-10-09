@@ -406,7 +406,6 @@ class SpectrumRecord:
         contents = [f"{k}={v}" for k, v in res.items()]
         return f"SpectrumRecord(n_peaks={self.n_peaks}, {', '.join(contents)})"
 
-    # ------------------- peaks access -------------------
     def __getitem__(self, key: str) -> Any:
         """
         Access spectrum-level metadata by column name.
@@ -418,6 +417,36 @@ class SpectrumRecord:
                 raise KeyError(f"Key '{key}' not found in spectrum metadata.")
         else:
             raise TypeError(f"Invalid index type: {type(key)}. Only str allowed.")
+        
+    def __eq__(self, other: SpectrumRecord) -> bool:
+        """
+        Check equality between two SpectrumRecord objects.
+
+        Two SpectrumRecords are considered equal if:
+        - They are both SpectrumRecord instances
+        - Their metadata (all columns) are identical
+        - Their peak lists (m/z and intensity) are identical
+        """
+        if not isinstance(other, SpectrumRecord):
+            return False
+
+        self_meta = {k: self._datai(k) for k in self._ms_dataset._columns}
+        other_meta = {k: other._datai(k) for k in other._ms_dataset._columns}
+
+        if set(self_meta.keys()) != set(other_meta.keys()):
+            return False
+
+        for key in self_meta.keys():
+            v1, v2 = self_meta[key], other_meta[key]
+            if (v1 != v1 and v2 != v2):  # both NaN
+                continue
+            if v1 != v2:
+                return False
+
+        if self.peaks != other.peaks:
+            return False
+
+        return True
 
     # ------------------- properties -------------------
     @property

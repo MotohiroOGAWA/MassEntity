@@ -136,20 +136,28 @@ class TestReadMSP(unittest.TestCase):
             # Read back the written file
             ds2 = read_msp(out_path, show_progress=False)
 
-            # Compare dataset length and columns
+            # Compare dataset 
             self.assertEqual(len(ds), len(ds2))
-            self.assertListEqual(ds.columns, ds2.columns)
+            for i in range(len(ds)):
+                self.assertEqual(ds[i], ds2[i])
+            
+    def test_write_and_read_back_with_peak_meta(self):
+        # Read dummy dataset
+        ds = read_msp(self.test_file_with_peak_meta, show_progress=False)
 
-            # Compare metadata values
-            meta1 = ds.meta_copy
-            meta2 = ds2.meta_copy
-            self.assertEqual(meta1.loc[0, "Name"], meta2.loc[0, "Name"])
-            self.assertAlmostEqual(float(meta1.loc[0, "PrecursorMZ"]),
-                                   float(meta2.loc[0, "PrecursorMZ"]),
-                                   places=4)
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file_with_peak_meta)) as tmpdir:
+            out_path = os.path.join(tmpdir, "out.msp")
 
-            # Compare total number of peaks
-            self.assertEqual(ds.peaks.n_all_peaks, ds2.peaks.n_all_peaks)
+            # Write dataset to MSP
+            write_msp(ds, out_path)
+
+            # Read back the written file
+            ds2 = read_msp(out_path, show_progress=False)
+
+            # Compare dataset 
+            self.assertEqual(len(ds), len(ds2))
+            for i in range(len(ds)):
+                self.assertEqual(ds[i], ds2[i])
 
     def test_write_with_header_map_from_read(self):
         # Read dataset and get header_map
@@ -164,9 +172,10 @@ class TestReadMSP(unittest.TestCase):
             # Read file again and get new header_map
             ds2, header_map2 = read_msp(out_path, return_header_map=True, show_progress=False)
 
-            # Dataset consistency check
+            # Compare dataset 
             self.assertEqual(len(ds), len(ds2))
-            self.assertListEqual(ds.columns, ds2.columns)
+            for i in range(len(ds)):
+                self.assertEqual(ds[i], ds2[i])
 
 if __name__ == "__main__":
     unittest.main()

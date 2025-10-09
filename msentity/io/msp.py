@@ -103,7 +103,7 @@ def read_msp(filepath,
     else:
         return ms_dataset
 
-def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, encoding='utf-8'):
+def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, peak_headers=None, encoding='utf-8', delimiter='\t'):
     """
     Save MSDataset to MSP file.
 
@@ -111,87 +111,74 @@ def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, encodi
         path (str): Output MSP file path.
     """
     df = dataset.meta_copy
+
     if headers is None:
         headers = dataset._columns
-
     _headers = []
     for c in headers:
         if c not in df.columns:
             continue
-        if c == "IdxOri":
-            continue
         if c == "NumPeaks":
             continue
         _headers.append(c)
-    
     headers = _headers.copy()
     for c in headers:
         if c not in header_map.keys():
             header_map[c] = c
-    with open(path, "w", encoding=encoding) as outfile:
+
+    if peak_headers is None:
+        peak_headers = dataset.peaks._metadata.columns.tolist() if dataset.peaks._metadata is not None else []
+    _peak_headers = []
+    for c in peak_headers:
+        if c not in dataset.peaks._metadata.columns:
+            continue
+        if c in ("mz", "intensity"):
+            continue
+        _peak_headers.append(c)
+    peak_headers = _peak_headers.copy()
+
+    with open(path, "w", encoding=encoding) as wf:
         for record in dataset:
             for key in headers:
                 value = str(record[key])
                 if value == "nan":
                     value = ""
-                outfile.write(f"{header_map[key]}: {value}\n")
+                wf.write(f"{header_map[key]}: {value}\n")
 
-            outfile.write(f"NumPeaks: {record.n_peaks}\n")
+            wf.write(f"NumPeaks: {record.n_peaks}\n")
+            peak_meta_columns = set()
+            mz_inten_pairs = []
+            peak_meta_items = []
+            peak_meta_empties = []
             for peak in record.peaks:
-                outfile.write(f"{peak.mz} {peak.intensity}\n")
-            outfile.write("\n")
-    
-def normalize_column(value:str) -> str:
-    result = value.replace("_", "").replace("/", "").lower()
-    return result
-
-# MSP column mappings for parsing and column naming
-msp_column_names = {
-    "Name": [],
-    "Formula": [],
-    "InChIKey": [],
-    "PrecursorMZ": [],
-    "AdductType": ["PrecursorType"],
-    "SpectrumType": [],
-    "InstrumentType": [],
-    "Instrument": [],
-    "IonMode": [],
-    "CollisionEnergy": [],
-    "ExactMass": [],
-}
-
-# Column data types for processing
-msp_column_types = {
-    "PrecursorMZ": "Float32",
-    "ExactMass": "Float32",
-}
-
-
-# Convert columns to their predefined data types (strings if not specified)
-def convert_to_types_str(columns):
-    column_types = {}
-    for c in columns:
-        if c in msp_column_types:
-            column_types[c] = msp_column_types[c]
-        else:
-            column_types[c] = "str"
-    return column_types
-
-# AdductType column data mapping 
-precursor_type_data = {
-    "[M]+" : ["M", "[M]"],
-    "[M+H]+": ["M+H", "[M+H]"],
-    "[M-H]-": ["M-H", "[M-H]"],
-    "[M+Na]+": ["M+Na", "[M+Na]"],
-    "[M+K]+": ["M+K", "[M+K]"],
-    "[M+NH4]+": ["M+NH4", "[M+NH4]"],
-    }
-to_precursor_type = {}
-for precursor_type, data in precursor_type_data.items():
-    to_precursor_type[precursor_type] = precursor_type
-    for aliases in data:
-        to_precursor_type[aliases] = precursor_type
-
+                mz_inten_pair = f"{peak.mz}{delimiter}{peak.intensity}"
+                items = []
+                meta_empty = True
+                for col in peak_headers:
+                    item = str(peak.metadata.get(col, ""))
+                    if item == "nan":
+                        item = ""
+                    if item != '':
+                        peak_meta_columns.add(col)
+                        meta_empty = False
+                    items.append(item)
+                mz_inten_pairs.append(mz_inten_pair)
+                peak_meta_items.append(items)
+                peak_meta_empties.append(meta_empty)
+            
+            valid_peak_header_idxs = []
+            if len(peak_meta_columns) > 0:
+                peak_columns = ['mz', 'intensity'] + [col for col in peak_headers if col in peak_meta_columns]
+                valid_peak_header_idxs = [i for i, col in enumerate(peak_headers) if col in peak_meta_columns]
+                wf.write(delimiter.join(peak_columns) + '\n')
+            for i, items in enumerate(peak_meta_items):
+                valid_items = [items[j] for j in valid_peak_header_idxs]
+                if all((item == '') for item in valid_items):
+                    wf.write(f"{mz_inten_pairs[i]}\n")
+                else:
+                    meta_items_text = ' ; '.join(valid_items)
+                    wf.write(f"{mz_inten_pairs[i]}{delimiter}{meta_items_text}\n")
+            wf.write("\n")
 
 if __name__ == "__main__":
     pass
