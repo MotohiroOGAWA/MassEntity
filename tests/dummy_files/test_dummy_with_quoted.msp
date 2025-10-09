@@ -1,0 +1,53 @@
+Name: compound1
+Ion_mode: P
+Instrument: Orbitrap Fusion Lumos
+Instrument_type: HCD
+Ionization: ESI
+Collision_energy: NCE=65% 54eV
+Collision_gas: N2
+Sample_inlet: direct flow injection
+Spectrum_type: MS2
+Precursor_type: [M+Na]+
+PrecursorMZ: 360.069
+Notes: micromol/L in water/acetonitrile/formic acid (50/50/0.1); Spec=Consensus Nreps=25/25 
+InChIKey: ZWIHLCKHOMJFNY-SNAWJCMRSA-N
+SMILES: COc1c(O)c(O)c(C)c2c1OC(=O)C2(C)NC(=O)/C=C/C(=O)O
+Formula: C15H15NO8
+MW: 337
+ExactMass: 337.079767
+DB#: 1
+Comments: 
+Num Peaks: 6
+53.0387 9.4 "C4H5=p-C11H10NNaO8/2.3ppm 9/25"
+55.0180 24.5 "C3H3O=p-C12H12NNaO7/2.9ppm 18/25"
+127.0393 9.3 "C7H6NNa=p-C8H9O8/0.5ppm;C6H7O3=p-C9H8NNaO5/2.6ppm 8/25"
+135.0396 7.5 "? 7/25"
+177.0550 26.5 "C11H8NNa=p-C4H7O8/0.6ppm;C10H9O3=p-C5H6NNaO5/2.1ppm 20/25"
+179.0021 7.7 "C2H6NNaO7=p-C13H9O/-8.7ppm 8/25"
+
+Name: compound2
+Ion_mode: P
+Instrument: Orbitrap Fusion Lumos
+Instrument_type: HCD
+Ionization: ESI
+Collision_energy: NCE=76% 62eV
+Collision_gas: N2
+Sample_inlet: direct flow injection
+Spectrum_type: MS2
+Precursor_type: [M+Na]+
+PrecursorMZ: 360.069
+Notes: micromol/L in water/acetonitrile/formic acid (50/50/0.1); Spec=Consensus Nreps=24/25
+InChIKey: ZWIHLCKHOMJFNY-SNAWJCMRSA-N
+SMILES: COc1c(O)c(O)c(C)c2c1OC(=O)C2(C)NC(=O)/C=C/C(=O)O
+Formula: C15H15NO8
+MW: 337
+ExactMass: 337.079767
+DB#: 2
+Comments: 
+Num Peaks: 6
+51.0231 15.4 "C4H3=p-C11H12NNaO8/3.3ppm 8/24"
+142.0653 221.2 "C10H8N=p-C5H7NaO8/1.3ppm 24/24"
+151.0394 11.8 "C9H6NNa=p-C6H9O8/1.1ppm;C8H7O3=p-C7H8NNaO5/2.8ppm 6/24"
+163.0324 27.6 "? 12/24"
+179.0018 8.8 "? 5/24"
+182.0967 18.3 "C13H12N=p-C2H3NaO8/1.5ppm 9/24"

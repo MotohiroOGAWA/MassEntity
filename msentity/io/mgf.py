@@ -1,16 +1,8 @@
-import os
-import re
-from tqdm import tqdm
-from datetime import datetime
-from typing import Tuple
+from typing import Optional, Callable, Dict, List
 
-import pandas as pd
-import numpy as np
-import torch
-
-from .IOContext import ReaderContext
+from .IOContext import ReaderContext, parse_peak_text
 from .constants import ErrorLogLevel
-from ..core import MSDataset, PeakSeries
+from ..core import MSDataset
 from ..utils.annotate import set_spec_id
 
 
@@ -21,6 +13,8 @@ def read_mgf(filepath,
              error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
              error_log_file=None,
              show_progress: bool = True,
+             peak_parser: Optional[Callable[[str], List[Dict]]] = None,
+             auto_peak_col_prefix: str = "column",
              ) -> MSDataset:
     """
     Read MGF (Mascot Generic Format) file and return as MSDataset.
@@ -48,58 +42,39 @@ def read_mgf(filepath,
 
     with open(filepath, "r", encoding=encoding) as f:
         peak_flag = False
+        peak_text = ""
         for line in f:
             mgf_reader.update(line)
             try:
                 if not peak_flag and line == '\n':
                     continue
 
-                if '=' not in line and not peak_flag:
+                s = line.strip().split('=')
+                if not peak_flag and (len(s) == 1 or (len(s[0].split()) > 1)):
                     peak_flag = True
 
                 # --- MGF block delimiters ---
                 if line.upper().startswith("BEGIN IONS"):
                     peak_flag = False
-                    peak_columns = []
+                    peak_text = ""
                 elif line.upper().startswith("END IONS"):
+                    try:
+                        if peak_parser is None:
+                            peaks: List[Dict] = parse_peak_text(peak_text, auto_col_prefix=auto_peak_col_prefix)
+                        else:
+                            peaks: List[Dict] = peak_parser(peak_text)
+                        for peak_entry in peaks:
+                            mgf_reader.add_peak(**peak_entry)
+                    except Exception as e:
+                        mgf_reader.add_error_message(str(e), line_text=peak_text)
+
                     mgf_reader.update_record()
                     peak_flag = False
+                    peak_text = ""
 
                 # --- Inside an IONS block ---
                 elif peak_flag:
-                    # Check if the line contains peak data
-                    if len(peak_columns) == 0:
-                        items = line.strip().split()
-                        if len(items) >= 2:
-                            if(items[0].lower() == 'mz' and items[1].lower() == 'intensity'):
-                                peak_columns = items.copy()
-                                continue
-                        if len(peak_columns) == 0:
-                            peak_columns = ['mz', 'intensity']
-
-
-                    items = line.strip().split()
-                    if len(items) >= 3:
-                        mz_item = items[0]
-                        intensity_item = items[1]
-                        meta_items = "".join(items[2:]).split(';')
-                    elif len(items) == 2:
-                        mz_item = items[0]
-                        intensity_item = items[1]
-                        meta_items = []
-                    else:
-                        raise ValueError(f"Error: Peak line '{line.strip()}' does not have m/z and intensity values.")
-                    
-                    if len(meta_items) > len(peak_columns) - 2:
-                        raise ValueError(f"Error: Peak line '{line.strip()}' has more metadata items than expected based on header.")
-
-                    peak_entry = {'mz': float(mz_item), 'intensity': float(intensity_item)}
-                    for i in range(len(meta_items)):
-                        col = peak_columns[i+2]
-                        m = meta_items[i]
-                        if m != '':
-                            peak_entry[col] = m
-                    mgf_reader.add_peak(**peak_entry)
+                    peak_text += line
                 else:
                     # --- Metadata lines ---
                     if '=' in line:
@@ -195,8 +170,8 @@ def write_mgf(dataset: MSDataset, path: str, headers=None, header_map={}, peak_h
                 if all((item == '') for item in valid_items):
                     wf.write(f"{mz_inten_pairs[i]}\n")
                 else:
-                    meta_items_text = ' ; '.join(valid_items)
-                    wf.write(f"{mz_inten_pairs[i]}{delimiter}{meta_items_text}\n")
+                    meta_items_text = '" ; "'.join(valid_items)
+                    wf.write(f'{mz_inten_pairs[i]}{delimiter}"{meta_items_text}"\n')
             wf.write("END IONS\n\n")
             wf.write("\n")
 

@@ -1,4 +1,5 @@
 import os
+from typing import List, Dict
 import pandas as pd
 import torch
 from tqdm import tqdm
@@ -182,7 +183,7 @@ class ReaderContext:
     def _try_write_errors(self) -> bool:
         if self.error_flag and self.error_log_level != ErrorLogLevel.NONE:
             if self.error_log_level == ErrorLogLevel.DETAIL:
-                self.error_text_list.append(self.record_text)
+                self.error_text_list.append(self.record_text.strip())
             error_text = '\n'.join(self.error_text_list)
             if not os.path.exists(self.error_file_path):
                 with open(self.error_file_path, "w") as ef:
@@ -191,3 +192,87 @@ class ReaderContext:
                 ef.write(error_text + '\n\n')
             return True
         return False
+    
+
+def parse_peak_text(peak_text: str, auto_col_prefix: str = "column") -> List[Dict]:
+    """
+    Parse peak text into a list of peak dictionaries.
+    """
+    peak_columns = []
+    peak_entry_list = []
+    lines = peak_text.strip().split('\n')
+    if len(lines) == 0:
+        return peak_entry_list
+    
+    items = lines[0].strip().split()
+    if len(items) >= 2:
+        if(items[0].lower() == 'mz' and items[1].lower() == 'intensity'):
+            peak_columns = items.copy()
+            lines = lines[1:]
+    if len(peak_columns) == 0:
+        peak_columns = ['mz', 'intensity']
+
+    for line in lines:
+        items = line.strip().split(maxsplit=2)
+        if len(items) == 3:
+            mz_item = items[0]
+            intensity_item = items[1]
+            semi_split_fields = items[2].split(';')
+
+            quote_start_idx = -1
+            quote_end_idx = -1
+            quote_char = ''
+            meta_items = []
+            merged_item = ''
+            for i, item in enumerate(semi_split_fields):
+                if item.strip().startswith('"') and quote_start_idx == -1:
+                    quote_start_idx = i
+                    quote_char = '"'
+                if item.strip().startswith("'") and quote_start_idx == -1:
+                    quote_start_idx = i
+                    quote_char = "'"
+
+                if quote_start_idx != -1 and item.strip().endswith(quote_char):
+                    quote_end_idx = i
+
+                if quote_start_idx != -1 and quote_end_idx != -1:
+                    merged_item = ";".join(semi_split_fields[quote_start_idx:quote_end_idx+1])
+                    merged_item = merged_item.strip().strip(quote_char)
+                    quote_start_idx = -1
+                    quote_end_idx = -1
+                    quote_char = ''
+                elif quote_start_idx != -1 and quote_end_idx == -1:
+                    continue
+                else:
+                    merged_item = item
+                
+                if quote_start_idx == -1:
+                    meta_items.append(merged_item.strip())
+                    merged_item = ''
+            if merged_item != '':
+                raise ValueError(f"Error: Peak line '{line.strip()}' has unmatched quotes in metadata.")
+                
+        elif len(items) == 2:
+            mz_item = items[0]
+            intensity_item = items[1]
+            meta_items = []
+
+        else:
+            raise ValueError(f"Error: Peak line '{line.strip()}' does not have m/z and intensity values.")
+        
+        # if len(meta_items) > len(peak_columns) - 2:
+        #     raise ValueError(f"Error: Peak line '{line.strip()}' has more metadata items than expected based on header.")
+
+        peak_entry = {'mz': float(mz_item), 'intensity': float(intensity_item)}
+        for i in range(len(meta_items)):
+            if i+2 >= len(peak_columns):
+                col = f"{auto_col_prefix}{i+3-len(peak_columns)}"
+            else:
+                col = peak_columns[i+2]
+            m = meta_items[i]
+            if m != '':
+                if col in peak_entry:
+                    raise ValueError(f"Error: Duplicate peak metadata column '{col}' in line '{line.strip()}'.")
+                peak_entry[col] = m
+        peak_entry_list.append(peak_entry)
+    return peak_entry_list
