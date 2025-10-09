@@ -9,12 +9,21 @@ from .constants import ErrorLogLevel
 from ..core import MSDataset, PeakSeries
 
 class ReaderContext:
-    def __init__(self, file_path: str, error_log_level: ErrorLogLevel = ErrorLogLevel.NONE, error_log_file: str = None, encoding: str = 'utf-8', show_progress: bool = True):
+    def __init__(
+            self, 
+            file_path: str, 
+            error_log_level: ErrorLogLevel = ErrorLogLevel.NONE, 
+            error_log_file: str = None, 
+            encoding: str = 'utf-8', 
+            allow_duplicate_cols=False,
+            show_progress: bool = True,
+            ):
         self.file_type_name = ''
         self.file_path = file_path
         self.file_size = os.path.getsize(file_path)
         self.processed_size = 0
         self.encoding = encoding
+        self.allow_duplicate_cols = allow_duplicate_cols
         self.item_parser = ItemParser()
         self.error_log_level = error_log_level
         self.header_map = {}
@@ -152,11 +161,19 @@ class ReaderContext:
 
     def add_meta(self, key: str, value):
         parsed_key, parsed_value = self.item_parser.parse_item_pair(key, value)
+        if parsed_key in self.meta:
+            if not self.allow_duplicate_cols:
+                raise ValueError(f"Duplicate meta key: ({key} & {self.meta[parsed_key]}) -> {parsed_key}")
+            else:
+                idx = 1
+                while True:
+                    if f"{parsed_key}{idx}" not in self.meta:
+                        parsed_key = f"{parsed_key}{idx}"
+                        break
+                    idx += 1
         if parsed_key not in self.all_cols:
             self.header_map[parsed_key] = key
             self.all_col_names.append(parsed_key)
-        if parsed_key in self.meta:
-            raise ValueError(f"Duplicate meta key: ({key} & {self.meta[parsed_key]}) -> {parsed_key}")
         self.meta[parsed_key] = parsed_value
         return parsed_key, parsed_value
     

@@ -13,6 +13,7 @@ def read_mgf(filepath,
              error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
              error_log_file=None,
              show_progress: bool = True,
+             allow_duplicate_cols: bool = False,
              peak_parser: Optional[Callable[[str], List[Dict]]] = None,
              auto_peak_col_prefix: str = "column",
              ) -> MSDataset:
@@ -36,6 +37,7 @@ def read_mgf(filepath,
         error_log_level=error_log_level,
         error_log_file=error_log_file,
         encoding=encoding,
+        allow_duplicate_cols=allow_duplicate_cols,
         show_progress=show_progress,
     )
     mgf_reader.file_type_name = "mgf"
