@@ -18,7 +18,10 @@ class PeakEntry:
             return f"m/z={self._mz}, intensity={self._intensity}"
         else:
             return f"m/z={self._mz}, intensity={self._intensity}, extra={self._metadata}"
-    
+
+    def __getitem__(self, key):
+        return self._metadata[key]
+
     def __iter__(self):
         """
         Iterate over the m/z and intensity values.

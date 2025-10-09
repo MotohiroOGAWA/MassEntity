@@ -1,13 +1,12 @@
+import os
+import re
+from tqdm import tqdm
+from datetime import datetime
+from typing import Tuple
+
 import pandas as pd
 import numpy as np
 import torch
-import os
-from tqdm import tqdm
-import warnings
-from typing import Tuple
-from datetime import datetime
-
-import re
 
 from .IOContext import ReaderContext
 from .constants import ErrorLogLevel
@@ -15,37 +14,58 @@ from ..core import MSDataset, PeakSeries
 from ..utils.annotate import set_spec_id
 
 
-def read_msp(filepath, 
-             encoding='utf-8', 
-             return_header_map=False, 
-             spec_id_prefix=None, 
+def read_mgf(filepath,
+             encoding: str = "utf-8",
+             return_header_map: bool = False,
+             spec_id_prefix: str = None,
              error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
              error_log_file=None,
-             show_progress=True,
+             show_progress: bool = True,
              ) -> MSDataset:
-    
-    msp_reader = ReaderContext(
-        filepath, 
-        error_log_level=error_log_level, 
+    """
+    Read MGF (Mascot Generic Format) file and return as MSDataset.
+
+    Args:
+        filepath (str): Path to MGF file.
+        encoding (str): File encoding.
+        return_header_map (bool): Return header map along with dataset.
+        spec_id_prefix (str): Prefix for spectrum ID (optional).
+        error_log_level (ErrorLogLevel): Logging level for errors.
+        show_progress (bool): Display tqdm progress bar.
+
+    Returns:
+        MSDataset
+    """
+
+    mgf_reader = ReaderContext(
+        filepath,
+        error_log_level=error_log_level,
         error_log_file=error_log_file,
         encoding=encoding,
         show_progress=show_progress,
-        )
-    msp_reader.file_type_name = "msp"
-    
-    with open(filepath, 'r', encoding=encoding) as f:
+    )
+    mgf_reader.file_type_name = "mgf"
+
+    with open(filepath, "r", encoding=encoding) as f:
         peak_flag = False
-        peak_columns = []
-        for line in f.readlines():
-            msp_reader.update(line)
+        for line in f:
+            mgf_reader.update(line)
             try:
                 if not peak_flag and line == '\n':
-                    pass
+                    continue
 
-                elif peak_flag and line == '\n':
-                    msp_reader.update_record()
+                if '=' not in line and not peak_flag:
+                    peak_flag = True
+
+                # --- MGF block delimiters ---
+                if line.upper().startswith("BEGIN IONS"):
                     peak_flag = False
                     peak_columns = []
+                elif line.upper().startswith("END IONS"):
+                    mgf_reader.update_record()
+                    peak_flag = False
+
+                # --- Inside an IONS block ---
                 elif peak_flag:
                     # Check if the line contains peak data
                     if len(peak_columns) == 0:
@@ -79,33 +99,34 @@ def read_msp(filepath,
                         m = meta_items[i]
                         if m != '':
                             peak_entry[col] = m
-                    msp_reader.add_peak(**peak_entry)
+                    mgf_reader.add_peak(**peak_entry)
                 else:
-                    k,v = line.split(":", 1)
-                        
-                    parsed_k, parsed_v = msp_reader.add_meta(k,v)
+                    # --- Metadata lines ---
+                    if '=' in line:
+                        k,v = line.split("=", 1)
+                        parsed_k, parsed_v = mgf_reader.add_meta(k,v)
+                    else:
+                        raise ValueError(f"Error: Metadata line '{line.strip()}' does not contain '=' character.")
 
-                    if parsed_k == "NumPeaks":
-                        peak_flag = True
-                
             except Exception as e:
-                msp_reader.add_error_message(str(e), line_text=line)
+                mgf_reader.add_error_message(str(e), line_text=line)
             finally:
                 pass
 
-    ms_dataset = msp_reader.get_dataset()
+    ms_dataset = mgf_reader.get_dataset()
 
+    # Assign spectrum ID prefix if requested
     if spec_id_prefix is not None:
         set_spec_id(ms_dataset, spec_id_prefix)
 
     if return_header_map:
-        return ms_dataset, msp_reader.header_map
+        return ms_dataset, mgf_reader.header_map
     else:
         return ms_dataset
 
-def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, peak_headers=None, encoding='utf-8', delimiter='\t'):
+def write_mgf(dataset: MSDataset, path: str, headers=None, header_map={}, peak_headers=None, encoding='utf-8', delimiter='\t'):
     """
-    Save MSDataset to MSP file.
+    Save MSDataset to MGF file.
     """
     df = dataset.meta_copy
 
@@ -137,12 +158,12 @@ def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, peak_h
 
     with open(path, "w", encoding=encoding) as wf:
         for record in dataset:
+            wf.write("BEGIN IONS\n")
             for key in headers:
                 value = str(record[key])
                 if value == "nan":
                     value = ""
-                wf.write(f"{header_map[key]}: {value}\n")
-            wf.write(f"NumPeaks: {record.n_peaks}\n")
+                wf.write(f"{header_map[key]}={value}\n")
 
             peak_meta_columns = set()
             mz_inten_pairs = []
@@ -176,7 +197,6 @@ def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, peak_h
                 else:
                     meta_items_text = ' ; '.join(valid_items)
                     wf.write(f"{mz_inten_pairs[i]}{delimiter}{meta_items_text}\n")
+            wf.write("END IONS\n\n")
             wf.write("\n")
 
-if __name__ == "__main__":
-    pass
