@@ -146,19 +146,12 @@ class ItemParser:
             cls._to_canonical_adduct_type[normalized_adduct_type] = normalized_adduct_type
         
         return cls._to_canonical_adduct_type[normalized_adduct_type]
-
+    
     @classmethod
-    def parse(cls, line: str) -> Tuple[str, str]:
-        if ":" not in line:
-            raise ValueError(f"Line format is invalid: '{line}'")
-
-        parts = line.split(":", 1)
-        key = parts[0].strip()
-        value = parts[1].strip()
-
+    def parse_item_pair(cls, key: str, value: str) -> str:
+        key, value = key.strip(), value.strip()
         canonical_key = cls.to_canonical_key(key)
         if canonical_key == "AdductType":
             value = cls.to_canonical_adduct_type(value)
 
         return canonical_key, value
-

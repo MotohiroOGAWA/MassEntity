@@ -9,190 +9,99 @@ from datetime import datetime
 
 import re
 
-from .ItemParser import ItemParser
-from ..core import MSDataset, PeakSeries
+from .IOContext import ReaderContext
 from .constants import ErrorLogLevel
+from ..core import MSDataset, PeakSeries
+from ..utils.annotate import set_spec_id
 
 
 def read_msp(filepath, 
              encoding='utf-8', 
              return_header_map=False, 
-             set_idx_ori=False, 
+             spec_id_prefix=None, 
              error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
              error_log_file=None,
              show_progress=True,
              ) -> MSDataset:
-    file_size = os.path.getsize(filepath)
-    processed_size = 0
-    line_count = 1
-    item_parser = ItemParser()
-
-    cols = {} # Create a data list for each column
-    all_peak = []
-    offsets = [0]
-    peak = []
-    max_peak_cnt = 0
-    record_cnt = 1
-    success_cnt = 0
-    text = ""
-    error_text = ""
-    error_flag = False
-
-    header_map = {}
-
-    if error_log_file is None:
-        now = datetime.now().strftime("%Y%m%d%H%M%S")
-        error_filename = os.path.splitext(filepath)[0] + f"_error_{now}"
-        cnt = 1
-        if os.path.exists(error_filename + ".txt"):
-            while True:
-                if not os.path.exists(f'{error_filename}_{cnt}.txt'):
-                    error_filename = f'{error_filename}_{cnt}'
-                    break
-                else:
-                    cnt += 1
-        error_file_path = error_filename + ".txt"
-    elif not os.path.exists(os.path.dirname(filepath)):
-        raise ValueError(f"Error: Directory '{os.path.dirname(filepath)}' does not exist.")
-    else:
-        error_file_path = error_log_file
-
-    pbar = tqdm(total=file_size, desc=f"[Read msp]{os.path.basename(filepath)}", mininterval=0.5) if show_progress else None
+    
+    msp_reader = ReaderContext(
+        filepath, 
+        error_log_level=error_log_level, 
+        error_log_file=error_log_file,
+        encoding=encoding,
+        show_progress=show_progress,
+        )
+    msp_reader.file_type_name = "msp"
     
     with open(filepath, 'r', encoding=encoding) as f:
         peak_flag = False
+        peak_columns = []
         for line in f.readlines():
+            msp_reader.update(line)
             try:
                 if not peak_flag and line == '\n':
-                    continue
+                    pass
 
-                text += line
-
-                if peak_flag and line == '\n':
+                elif peak_flag and line == '\n':
+                    msp_reader.update_record()
                     peak_flag = False
-
-                    if not error_flag:
-                        all_peak.extend(peak)
-                        offsets.append(len(all_peak))
-                        max_peak_cnt = max(max_peak_cnt, len(peak))
-                        success_cnt += 1
-                        for k in cols:
-                            cols[k].append("")
-                    else:
-                        if error_log_level != ErrorLogLevel.NONE:
-                            error_text = _get_error_text(record_cnt, line_count, text, cols, error_log_level)
-                            
-                            if not os.path.exists(error_file_path):
-                                with open(error_file_path, "w") as ef:
-                                    ef.write('')
-                            with open(error_file_path, "a") as ef:
-                                ef.write(error_text)
-                        error_text = ""
-                        error_flag = False
-                        for k in cols:
-                            if len(cols[k]) >= success_cnt + 1:
-                                cols[k][-1] = ""
-                    text = ""
-                    peak = []
-                    record_cnt += 1
-                    for k in cols:
-                        if len(cols[k]) < success_cnt+1:
-                            cols[k] = cols[k] + [""] * (success_cnt+1 - len(cols[k]))
-                    if pbar is not None:
-                        pbar.set_postfix_str({"Success": f'{success_cnt}/{record_cnt}'})
+                    peak_columns = []
                 elif peak_flag:
-                    # Handling cases where peaks are tab-separated or space-separated
-                    if len(line.strip().split('\t')) == 2:
-                        mz, intensity = line.strip().split('\t')
-                    elif len(line.strip().split(' ')) == 2:
-                        mz, intensity = line.strip().split(' ')
-                    else:
-                        raise ValueError(f"Error: '{line.strip()}' was not split correctly.")
-                    mz, intensity = float(mz), float(intensity)
-                    peak.append([mz, intensity])
-                else:
-                    k,v = item_parser.parse(line)
-                    ori_k = line.split(":", 1)[0].strip()
-                    if k not in cols:
-                        header_map[k] = ori_k
-                        cols[k] = [""] * record_cnt
+                    # Check if the line contains peak data
+                    if len(peak_columns) == 0:
+                        items = line.strip().split()
+                        if len(items) >= 2:
+                            if(items[0].lower() == 'mz' and items[1].lower() == 'intensity'):
+                                peak_columns = items.copy()
+                                continue
+                        if len(peak_columns) == 0:
+                            peak_columns = ['mz', 'intensity']
 
-                    if k == "Comments":
-                        # Extract computed SMILES from comments
-                        pattern = r'"computed SMILES=([^"]+)"'
-                        match = re.search(pattern, v)
-                        if match:
-                            if "SMILES" not in cols:
-                                cols["SMILES"] = [""] * record_cnt
-                            cols["SMILES"][-1] = match.group(1)
+
+                    items = line.strip().split()
+                    if len(items) >= 3:
+                        mz_item = items[0]
+                        intensity_item = items[1]
+                        meta_items = "".join(items[2:]).split(';')
+                    elif len(items) == 2:
+                        mz_item = items[0]
+                        intensity_item = items[1]
+                        meta_items = []
                     else:
-                        cols[k][-1] = v
-                    if k == "NumPeaks":
+                        raise ValueError(f"Error: Peak line '{line.strip()}' does not have m/z and intensity values.")
+                    
+                    if len(meta_items) > len(peak_columns) - 2:
+                        raise ValueError(f"Error: Peak line '{line.strip()}' has more metadata items than expected based on header.")
+
+                    peak_entry = {'mz': float(mz_item), 'intensity': float(intensity_item)}
+                    for i in range(len(meta_items)):
+                        col = peak_columns[i+2]
+                        m = meta_items[i]
+                        if m != '':
+                            peak_entry[col] = m
+                    msp_reader.add_peak(**peak_entry)
+                else:
+                    k,v = line.split(":", 1)
+                        
+                    parsed_k, parsed_v = msp_reader.add_meta(k,v)
+
+                    if parsed_k == "NumPeaks":
                         peak_flag = True
                 
-                line_count += 1
-                processed_size = len(line.encode(encoding)) + 1
-                if pbar is not None:
-                    pbar.update(processed_size)
             except Exception as e:
-                text = 'Error: ' + str(e).replace('\n', '\\n') + '\n' + text
-                error_flag = True
+                msp_reader.add_error_message(str(e), line_text=line)
+            finally:
                 pass
 
-        # Remove last empty rows in metadata
-        for k in cols:
-            if cols[k][-1] != "":
-                break
-        else:
-            for k in cols:
-                del cols[k][-1]
-        row_cnt = len(cols[list(cols.keys())[0]])
+    ms_dataset = msp_reader.get_dataset()
 
-        # Append last peak data if file doesn't end with a blank line
-        if line != '\n' and (len(offsets) - 1 < row_cnt):
-            all_peak.extend(peak)
-            offsets.append(len(all_peak))
-            max_peak_cnt = max(max_peak_cnt, len(peak))
-            record_cnt += 1
-            success_cnt += 1
-
-        if pbar is not None:
-            pbar.set_postfix_str({"Success": f'{success_cnt}/{max(record_cnt-1,0)}'})
-            
-        if set_idx_ori:
-            cols['IdxOri'] = list(range(row_cnt))
-
-        if (error_log_level != ErrorLogLevel.NONE) and error_text != '':
-            error_text = _get_error_text(record_cnt, line_count, text, cols, error_log_level)
-            if not os.path.exists(error_file_path):
-                with open(error_file_path, "w") as ef:
-                    ef.write('')
-            with open(error_file_path, "a") as ef:
-                ef.write(error_text)
-
-    peaks = torch.tensor(all_peak)
-    offsets = torch.tensor(offsets)
-    peak_series = PeakSeries(peaks, offsets)
-    spectrum_meta = pd.DataFrame(cols)
-    ms_dataset = MSDataset(spectrum_meta, peak_series)
+    if spec_id_prefix is not None:
+        set_spec_id(ms_dataset, spec_id_prefix)
 
     if return_header_map:
-        return ms_dataset, header_map
+        return ms_dataset, msp_reader.header_map
     else:
         return ms_dataset
-    
-def _get_error_text(record_cnt, line_count, text, cols, error_log_level):
-    error_text = f"Record: {record_cnt}\n" + f"Rows: {line_count}\n"
-    for k in cols:
-        if len(cols[k]) == record_cnt:
-            cols[k].pop()
-        elif len(cols[k]) > record_cnt:
-            error_text += f"Error: '{k}' has more data than the record count.\n"
-    if error_log_level == ErrorLogLevel.DETAIL:
-        error_text += text + '\n\n'
-    else:
-        error_text += '\n\n'
-    return error_text
 
 def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, encoding='utf-8'):
     """
