@@ -14,7 +14,7 @@ class ItemParser:
         "CollisionEnergy": [],
         "ExactMass": [],
         "SMILES": [],
-        "Peak": [],
+        "NumPeaks": [],
     }
 
     adduct_type_aliases = {
@@ -34,7 +34,7 @@ class ItemParser:
 
     @classmethod
     def capitalize(cls, name: str) -> str:
-        parts = re.split(r'[_\s]+', name)
+        parts = re.split(r'[_\s]+|(?=[A-Z])', name)
         resuslt = ''.join(part.strip().capitalize() for part in parts if part)
         return resuslt
     
