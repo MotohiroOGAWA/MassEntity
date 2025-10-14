@@ -23,7 +23,7 @@ class TestReadMGF(unittest.TestCase):
         self.assertIsInstance(ds, MSDataset)
 
         # --- Spectrum metadata checks ---
-        meta = ds.meta_copy
+        meta = ds.meta
         # Expected 6 spectra
         self.assertEqual(len(ds), 6)
         # Check essential columns
@@ -58,7 +58,7 @@ class TestReadMGF(unittest.TestCase):
         self.assertEqual(len(ds), 6)
 
         # --- Peak metadata checks ---
-        peak_meta = ds.peaks._metadata
+        peak_meta = ds.peaks.metadata
         self.assertEqual(peak_meta.columns[0], 'Formula')
         self.assertEqual(peak_meta.columns[1], 'ppm')
         self.assertEqual(ds[0].peaks[0]['Formula'], '')
@@ -81,7 +81,7 @@ class TestReadMGF(unittest.TestCase):
 
         self.assertIsInstance(ds, MSDataset)
 
-        meta = ds.meta_copy
+        meta = ds.meta
         self.assertEqual(len(ds), 4)
 
         # Spot check
@@ -135,7 +135,7 @@ class TestReadMGF(unittest.TestCase):
 
 
         # --- Spectrum metadata checks ---
-        meta = ds.meta_copy
+        meta = ds.meta
         # Expected 5 spectra in the dummy MSP
         self.assertEqual(len(ds), 2)
     

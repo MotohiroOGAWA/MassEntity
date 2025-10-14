@@ -32,9 +32,16 @@ class MSDataset:
     def columns(self) -> List[str]:
         """Return the list of columns in this MSDataset view."""
         return list(self._columns) if self._columns is not None else list(self._spectrum_meta_ref.columns)
+    
+    @columns.setter
+    def columns(self, cols: Sequence[str]):
+        """Set the columns to include in this MSDataset view."""
+        if not all(col in self._spectrum_meta_ref.columns for col in cols):
+            raise ValueError("All specified columns must be in the spectrum metadata")
+        self._columns = list(cols)
 
     @property
-    def meta_copy(self) -> pd.DataFrame:
+    def meta(self) -> pd.DataFrame:
         """
         Return spectrum-level metadata view (row selection by PeakSeries index,
         and restricted to the selected columns). Editing the result updates
@@ -139,7 +146,7 @@ class MSDataset:
     def copy(self) -> "MSDataset":
         """Return independent copy of both metadata and peaks."""
         return MSDataset(
-            self.meta_copy.copy(),
+            self.meta.copy(),
             self._peak_series.copy(),
             columns=list(self._columns)
         )
@@ -266,6 +273,14 @@ class MSDataset:
             ignore_index=True
         )
 
+        all_columns = []
+        seen = set()
+        for ds in datasets:
+            for col in ds._columns:
+                if col not in seen:
+                    all_columns.append(col)
+                    seen.add(col)
+
         # --- concatenate peak-level data ---
         data_list = [ds.peaks._data_ref for ds in datasets]
         offsets_list = [ds.peaks._offsets_ref for ds in datasets]
@@ -291,12 +306,20 @@ class MSDataset:
         if peak_meta_list:
             peak_meta = pd.concat(peak_meta_list, ignore_index=True)
 
-        peak_series = PeakSeries(data, offsets, peak_meta, device=device)
+        all_peak_columns = []
+        seen = set()
+        for ds in datasets:
+            for col in ds.peaks.meta_columns:
+                if col not in seen:
+                    all_peak_columns.append(col)
+                    seen.add(col)
+
+        peak_series = PeakSeries(data, offsets, peak_meta, all_peak_columns, device=device)
 
         return cls(
             spectrum_meta,
             peak_series,
-            columns=datasets[0]._columns
+            columns=all_columns,
         )
 
     def to_hdf5(self, path: str, save_ref: bool = False):
@@ -324,6 +347,9 @@ class MSDataset:
                 dataset._peak_series._metadata_ref.to_parquet(buf, engine="pyarrow")
                 f.create_dataset("peaks/metadata_parquet", data=np.void(buf.getvalue()))
 
+                dt = h5py.string_dtype(encoding='utf-8')
+                f.create_dataset("peaks/meta_columns", data=np.array(dataset._peak_series._meta_columns, dtype=dt))
+
             # ---- save spectrum metadata (Parquet binary) ----
             buf = io.BytesIO()
             dataset._spectrum_meta_ref.to_parquet(buf, engine="pyarrow")
@@ -343,12 +369,15 @@ class MSDataset:
             if "peaks/metadata_parquet" in f:
                 buf = io.BytesIO(f["peaks/metadata_parquet"][()].tobytes())
                 peak_meta = pd.read_parquet(buf, engine="pyarrow")
+            
+            if "peaks/meta_columns" in f:
+                meta_columns = [col.decode('utf-8') if isinstance(col, bytes) else col for col in f["peaks/meta_columns"][:]]
 
             # ---- load spectrum metadata ----
             buf = io.BytesIO(f["spectrum_meta_parquet"][()].tobytes())
             spectrum_meta = pd.read_parquet(buf, engine="pyarrow")
 
-        ps = PeakSeries(data, offsets, peak_meta, index=index, device=device)
+        ps = PeakSeries(data, offsets, peak_meta, meta_columns, index=index, device=device)
         return MSDataset(spectrum_meta, ps)
 
 class SpectrumRecord:

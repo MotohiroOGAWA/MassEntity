@@ -2,7 +2,7 @@ from __future__ import annotations
 import torch
 import pandas as pd
 import numpy as np
-from typing import overload, Tuple, Iterator, Optional, Sequence, Literal, Union, Any
+from typing import overload, List, Tuple, Iterator, Optional, Sequence, Literal, Union, Any
 from .PeakEntry import PeakEntry
 from .PeakCondition import PeakCondition
 
@@ -17,6 +17,7 @@ class PeakSeries:
         data: torch.Tensor,
         offsets: torch.Tensor,
         metadata: Optional[pd.DataFrame] = None,
+        meta_columns: Optional[Sequence[str]] = None,
         index: Optional[torch.Tensor] = None,
         is_sorted: bool = False,
         device: Optional[Union[torch.device, str]] = None,
@@ -30,10 +31,19 @@ class PeakSeries:
         if metadata is not None:
             assert isinstance(metadata, pd.DataFrame)
             assert metadata.shape[0] == data.shape[0]
+        if metadata is not None and meta_columns is None:
+            meta_columns = metadata.columns.tolist()
+        if meta_columns is None:
+            meta_columns = []
+        if 'mz' in meta_columns:
+            meta_columns.remove('mz')
+        if 'intensity' in meta_columns:
+            meta_columns.remove('intensity')
 
         self._data_ref = data if device is None else data.to(_device)         # always original
         self._offsets_ref = offsets if device is None else offsets.to(_device)  # always original
         self._metadata_ref = metadata  # always original
+        self._meta_columns = meta_columns  # always original
 
         if index is None:
             self._index = torch.arange(offsets.size(0) - 1, dtype=torch.int64)
@@ -110,14 +120,15 @@ class PeakSeries:
         self._data[:, 1] = value
 
     @property
-    def _metadata(self) -> Optional[pd.DataFrame]:
+    def metadata(self) -> Optional[pd.DataFrame]:
         if self._metadata_ref is None:
             return None
         parts = [self._metadata_ref.iloc[self._offsets_ref[i].item():self._offsets_ref[i+1].item()] for i in self._index]
-        return pd.concat(parts, ignore_index=True) if parts else self._metadata_ref.iloc[0:0]
+        meta = pd.concat(parts, ignore_index=True) if parts else self._metadata_ref.iloc[0:0]
+        return meta[self._meta_columns].reset_index(drop=True)
     
-    @_metadata.setter
-    def _metadata(self, value: pd.DataFrame):
+    @metadata.setter
+    def metadata(self, value: pd.DataFrame):
         if self._metadata_ref is None:
             if value is None:
                 return
@@ -125,10 +136,10 @@ class PeakSeries:
                 raise AttributeError("No metadata_ref exists to update.")
 
         # shape consistency check
-        if len(value) != len(self._metadata):
+        if len(value) != len(self.metadata):
             raise ValueError(
                 f"Assigned metadata has {len(value)} rows, "
-                f"expected {len(self._metadata)} rows"
+                f"expected {len(self.metadata)} rows"
             )
 
         # write back into the underlying reference DataFrame segment by segment
@@ -141,6 +152,26 @@ class PeakSeries:
             seg_len = p.stop - p.start
             self._metadata_ref.iloc[p] = value.iloc[offset:offset + seg_len]
             offset += seg_len
+
+    @property
+    def meta_columns(self) -> Optional[List[str]]:
+        if self._meta_columns is None:
+            return None
+        return list(self._meta_columns)
+    
+    @meta_columns.setter
+    def meta_columns(self, cols: List[str]):
+        if self._metadata_ref is None and cols is not None:
+            raise AttributeError("No metadata_ref exists to set meta_columns.")
+        if cols is None:
+            cols = []
+        if not all(col in self._metadata_ref.columns for col in cols):
+            raise ValueError("All specified columns must be in the metadata")
+        if 'mz' in cols:
+            cols.remove('mz')
+        if 'intensity' in cols:
+            cols.remove('intensity')
+        self._meta_columns = list(cols)
 
     @property
     def count(self) -> int:
@@ -183,26 +214,27 @@ class PeakSeries:
         elif isinstance(i, slice):
             # Return a PeakSeries view for multiple spectra
             new_index = self._index[i]
-            return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, index=new_index)
+            return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, self.meta_columns, index=new_index)
         
         elif isinstance(i, torch.Tensor):
             new_index = self._index[i]
-            return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, index=new_index)
+            return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, self.meta_columns, index=new_index)
         else:
             # Convert fancy indexing into tensor of indices
             idx_tensor = torch.as_tensor(i, dtype=torch.int64, device=self.device)
             new_index = self._index[idx_tensor]
-            return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, index=new_index)
+            return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, self.meta_columns, index=new_index)
 
     # --- copy materializes real data ---
     def copy(self) -> "PeakSeries":
         # materialize actual sliced data
         data = self._data.clone()
         offsets = self._offsets.clone()
-        meta = None if self._metadata is None else self._metadata.copy().reset_index(drop=True)
+        meta = None if self.metadata is None else self.metadata.copy().reset_index(drop=True)
+        meta_columns = None if self._meta_columns is None else list(self._meta_columns)
 
         # construct fully independent PeakSeries
-        return PeakSeries(data, offsets, meta, index=None, device=self.device)
+        return PeakSeries(data, offsets, meta, meta_columns, index=None, device=self.device)
 
     def to(self, device: Union[torch.device, str], in_place: bool = True) -> "PeakSeries":
         """
@@ -213,6 +245,7 @@ class PeakSeries:
         data = self._data_ref.to(device)
         offsets = self._offsets_ref.to(device)
         meta = None if self._metadata_ref is None else self._metadata_ref.copy()
+        meta_columns = self.meta_columns
         index = self._index.to(device)
 
         if in_place:
@@ -222,7 +255,7 @@ class PeakSeries:
             self._index = index
             return self
         else:
-            return PeakSeries(data, offsets, meta, index=index)
+            return PeakSeries(data, offsets, meta, meta_columns, index=index)
 
     @property
     def device(self) -> torch.device:
@@ -247,8 +280,8 @@ class PeakSeries:
             PeakSeries: normalized series (self if in_place=True, otherwise a new copy).
         """
         data = self._data if in_place else self._data.clone()
-        meta = self._metadata if in_place else (
-            None if self._metadata is None else self._metadata.copy()
+        meta = self.metadata if in_place else (
+            None if self.metadata is None else self.metadata.copy()
         )
 
         if method == "vectorized":
@@ -291,6 +324,7 @@ class PeakSeries:
                 data.clone(),               # normalized data
                 self._offsets.clone(),          # offsets also copied
                 None if meta is None else meta.copy(),  # metadata also copied
+                None if self._meta_columns is None else list(self._meta_columns),
                 index=None,                     # this is an independent copy, not a view
                 is_sorted=False
             )
@@ -325,8 +359,8 @@ class PeakSeries:
             raise ValueError(f"Unsupported key '{key}', must be 'mz' or 'intensity'.")
 
         data = self._data if in_place else self._data.clone()
-        meta = self._metadata if in_place else (
-            None if self._metadata is None else self._metadata.copy()
+        meta = self.metadata if in_place else (
+            None if self.metadata is None else self.metadata.copy()
         )
 
         # Decide method
@@ -419,13 +453,14 @@ class PeakSeries:
 
         if in_place:
             self._data = data
-            self._metadata = meta
+            self.metadata = meta
             return (self, perm) if return_index else self
         else:
             result = PeakSeries(
                 data.clone(),
                 self._offsets.clone(),
                 None if meta is None else meta.copy(),
+                None if self._meta_columns is None else list(self._meta_columns),
                 index=None,
                 is_sorted=False
             )
@@ -514,6 +549,7 @@ class PeakSeries:
             self._data_ref,
             self._offsets_ref,
             self._metadata_ref,
+            self.meta_columns,
             index=new_index
         )
     
@@ -550,8 +586,8 @@ class PeakSeries:
         new_offsets[1:] = torch.cumsum(kept_counts, dim=0)
 
         # filter metadata if available
-        if self._metadata is not None:
-            filtered_meta = self._metadata.iloc[mask.cpu().numpy()].reset_index(drop=True)
+        if self.metadata is not None:
+            filtered_meta = self.metadata.iloc[mask.cpu().numpy()].reset_index(drop=True)
         else:
             filtered_meta = None
 
@@ -559,6 +595,7 @@ class PeakSeries:
             filtered_data,
             new_offsets,
             filtered_meta,
+            meta_columns=self.meta_columns,
             index=None,
         )
 
@@ -596,6 +633,7 @@ class SpectrumPeaks:
         meta = None
         if self._peak_series._metadata_ref is not None:
             meta = self._peak_series._metadata_ref.iloc[j]
+            meta = {k: meta[k] for k in self._peak_series.meta_columns}
         return PeakEntry(mz, inten, dict(meta) if meta is not None else None)
     
     def __setitem__(self, key: str, value: Union[Sequence, pd.Series, Any]):
@@ -611,8 +649,14 @@ class SpectrumPeaks:
         n_peaks = len(self)
         if self._peak_series._metadata_ref is None:
             self._peak_series._metadata_ref = pd.DataFrame(index=range(self._peak_series._data_ref.shape[0]))
-        if key not in self._peak_series._metadata_ref.columns:
-            self._peak_series._metadata_ref[key] = pd.NA
+        if key not in self._peak_series.meta_columns:
+            if key not in self._peak_series._metadata_ref.columns:
+                self._peak_series._metadata_ref[key] = pd.NA
+                _meta_columns = list(self._peak_series.meta_columns)
+                _meta_columns.append(key)
+                self._peak_series.meta_columns = _meta_columns
+            else:
+                raise ValueError(f"Cannot add new metadata column '{key}' that already exists in metadata_ref.")
 
         # Prepare the value(s) to assign
         idx = range(self._s, self._e)
@@ -722,7 +766,8 @@ class SpectrumPeaks:
         """Return the peak metadata for this spectrum (if available)."""
         if self._peak_series._metadata_ref is None:
             return None
-        return self._peak_series._metadata_ref.iloc[self._s:self._e].reset_index(drop=True)
+        meta = self._peak_series._metadata_ref.iloc[self._s:self._e]
+        return meta[self._peak_series.meta_columns].reset_index(drop=True)
 
     @property
     def mz(self) -> torch.Tensor:
@@ -764,6 +809,7 @@ class SpectrumPeaks:
                 data,
                 torch.tensor([0, len(data)], dtype=torch.int64, device=self.device),
                 self.metadata.copy() if self.metadata is not None else None,
+                self._peak_series.meta_columns.copy() if self._peak_series.meta_columns is not None else None,
                 index=None
             )
             return SpectrumPeaks(new_ps, 0)
@@ -797,6 +843,7 @@ class SpectrumPeaks:
                 data,
                 torch.tensor([0, len(data)], dtype=torch.int64, device=self.device),
                 meta.copy() if meta is not None else None,
+                self._peak_series.meta_columns.copy() if self._peak_series.meta_columns is not None else None,
                 index=None
             )
             return SpectrumPeaks(new_ps, 0)
@@ -830,6 +877,7 @@ class SpectrumPeaks:
                 data,
                 torch.tensor([0, len(data)], dtype=torch.int64, device=self.device),
                 meta.copy() if meta is not None else None,
+                self._peak_series.meta_columns.copy() if self._peak_series.meta_columns is not None else None,
                 index=None
             )
             return SpectrumPeaks(new_ps, 0)

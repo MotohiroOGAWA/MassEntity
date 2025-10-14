@@ -89,7 +89,7 @@ class ReaderContext:
 
     @property
     def progress_bar(self):
-        return tqdm(total=self.file_size, desc=f"[Reading {self.file_type_name}]{os.path.basename(self.file_path)}", mininterval=0.5)
+        return tqdm(total=self.file_size, desc=f"[Reading{(' '+self.file_type_name) if self.file_type_name!='' else ''}]{os.path.basename(self.file_path)}", mininterval=0.5)
     
     def update(self, line: str):
         self.line_count += 1

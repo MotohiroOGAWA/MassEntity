@@ -100,7 +100,7 @@ class AllowedAtomsCondition(SpecCondition):
 
     def evaluate(self, ds: MSDataset) -> torch.BoolTensor:
         # get SMILES column from dataset
-        smiles_list = ds.meta_copy[self.smiles_column].tolist()
+        smiles_list = ds.meta[self.smiles_column].tolist()
         mask = []
 
         for smi in smiles_list:

@@ -62,7 +62,7 @@ class TestMSDataset(unittest.TestCase):
 
     def test_spectrum_meta_view(self):
         # Check spectrum metadata view
-        meta = self.ds.meta_copy
+        meta = self.ds.meta
         self.assertEqual(meta.shape, (3, 4))
         self.assertListEqual(meta["spectrum_id"].tolist(), ["s1", "s2", "s3"])
         self.assertListEqual(meta["group"].tolist(), ["A", "B", "A"])
@@ -165,7 +165,7 @@ class TestMSDataset(unittest.TestCase):
 
         # Editing copy must not affect the original
         ds_copy[0]["spectrum_id"] = "modified"
-        self.assertNotEqual(ds_copy.meta_copy.iloc[0, 0], self.ds.meta_copy.iloc[0, 0])
+        self.assertNotEqual(ds_copy.meta.iloc[0, 0], self.ds.meta.iloc[0, 0])
 
     def test_sort_by(self):
         # Add a column to sort on
@@ -212,8 +212,8 @@ class TestMSDataset(unittest.TestCase):
 
             # --- Spectrum metadata check ---
             pd.testing.assert_frame_equal(
-                ds_loaded.meta_copy.reset_index(drop=True),
-                self.ds.meta_copy.reset_index(drop=True)
+                ds_loaded.meta.reset_index(drop=True),
+                self.ds.meta.reset_index(drop=True)
             )
 
             # --- PeakSeries data check ---
@@ -265,8 +265,8 @@ class TestMSDataset(unittest.TestCase):
 
             # --- Check spectrum metadata equality ---
             pd.testing.assert_frame_equal(
-                merged.meta_copy.reset_index(drop=True),
-                self.ds.meta_copy.reset_index(drop=True)
+                merged.meta.reset_index(drop=True),
+                self.ds.meta.reset_index(drop=True)
             )
 
             # --- Check peak data equality ---

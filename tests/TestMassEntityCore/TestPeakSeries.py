@@ -127,8 +127,8 @@ class TestPeakSeries(unittest.TestCase):
             s, e = shuffled._offsets[i].item(), shuffled._offsets[i + 1].item()
             perm = torch.randperm(e - s, generator=rng) + s
             shuffled._data[s:e] = shuffled._data[perm]
-            if shuffled._metadata is not None:
-                shuffled._metadata.iloc[s:e] = shuffled._metadata.iloc[perm.tolist()].values
+            if shuffled.metadata is not None:
+                shuffled.metadata.iloc[s:e] = shuffled.metadata.iloc[perm.tolist()].values
 
         # --- Case 1: in_place=False (returns a new PeakSeries) ---
         sorted_ps = shuffled.sort_by_mz(ascending=False, in_place=False)
@@ -166,8 +166,8 @@ class TestPeakSeries(unittest.TestCase):
             s, e = shuffled._offsets[i].item(), shuffled._offsets[i + 1].item()
             perm = torch.randperm(e - s, generator=rng) + s
             shuffled._data[s:e] = shuffled._data[perm]
-            if shuffled._metadata is not None:
-                shuffled._metadata.iloc[s:e] = shuffled._metadata.iloc[perm.tolist()].values
+            if shuffled.metadata is not None:
+                shuffled.metadata.iloc[s:e] = shuffled.metadata.iloc[perm.tolist()].values
 
         # --- Case 1: in_place=False ---
         sorted_ps = shuffled.sort_by_intensity(ascending=False, in_place=False)
@@ -212,9 +212,9 @@ class TestPeakSeries(unittest.TestCase):
     def test_copy(self):
         ps_copy = self.ps.copy()
         torch.testing.assert_close(ps_copy._data, self.ps._data)
-        self.assertTrue(ps_copy._metadata.equals(self.ps._metadata))
+        self.assertTrue(ps_copy.metadata.equals(self.ps.metadata))
         self.assertIsNot(ps_copy._data, self.ps._data)
-        self.assertIsNot(ps_copy._metadata, self.ps._metadata)
+        self.assertIsNot(ps_copy.metadata, self.ps.metadata)
 
     def test_copy_behavior(self):
         ps_copy = self.ps.copy()

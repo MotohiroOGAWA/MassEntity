@@ -24,7 +24,7 @@ class TestReadMSP(unittest.TestCase):
 
 
         # --- Spectrum metadata checks ---
-        meta = ds.meta_copy
+        meta = ds.meta
         # Expected 5 spectra in the dummy MSP
         self.assertEqual(len(ds), 5)
         # Check essential columns
@@ -61,7 +61,7 @@ class TestReadMSP(unittest.TestCase):
 
 
         # --- Spectrum metadata checks ---
-        meta = ds.meta_copy
+        meta = ds.meta
         # Expected 5 spectra in the dummy MSP
         self.assertEqual(len(ds), 5)
         # Check essential columns
@@ -89,7 +89,7 @@ class TestReadMSP(unittest.TestCase):
         self.assertAlmostEqual(first_spectrum_data[0, 0].item(), 91.0542, places=4)
         self.assertAlmostEqual(first_spectrum_data[-1, 0].item(), 246.1125, places=4)
 
-        peak_meta = ds.peaks._metadata
+        peak_meta = ds.peaks.metadata
         self.assertEqual(peak_meta.columns[0], 'Formula')
         self.assertEqual(peak_meta.columns[1], 'ppm')
 
@@ -111,7 +111,7 @@ class TestReadMSP(unittest.TestCase):
 
 
         # --- Spectrum metadata checks ---
-        meta = ds.meta_copy
+        meta = ds.meta
         # Expected 5 spectra in the dummy MSP
         self.assertEqual(len(ds), 3)
         # Check essential columns
@@ -189,7 +189,7 @@ class TestReadMSP(unittest.TestCase):
 
 
         # --- Spectrum metadata checks ---
-        meta = ds.meta_copy
+        meta = ds.meta
         # Expected 5 spectra in the dummy MSP
         self.assertEqual(len(ds), 2)
     

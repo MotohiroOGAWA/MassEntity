@@ -93,7 +93,7 @@ def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, peak_h
     """
     Save MSDataset to MSP file.
     """
-    df = dataset.meta_copy
+    df = dataset.meta
 
     if headers is None:
         headers = dataset._columns
@@ -110,10 +110,10 @@ def write_msp(dataset: MSDataset, path: str, headers=None, header_map={}, peak_h
             header_map[c] = c
 
     if peak_headers is None:
-        peak_headers = dataset.peaks._metadata.columns.tolist() if dataset.peaks._metadata is not None else []
+        peak_headers = dataset.peaks.metadata.columns.tolist() if dataset.peaks.metadata is not None else []
     _peak_headers = []
     for c in peak_headers:
-        if c not in dataset.peaks._metadata.columns:
+        if c not in dataset.peaks.metadata.columns:
             continue
         if c in ("mz", "intensity"):
             continue
