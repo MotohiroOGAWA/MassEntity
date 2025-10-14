@@ -12,13 +12,14 @@ class ReaderContext:
     def __init__(
             self, 
             file_path: str, 
+            file_type_name: str = '',
             error_log_level: ErrorLogLevel = ErrorLogLevel.NONE, 
             error_log_file: str = None, 
             encoding: str = 'utf-8', 
             allow_duplicate_cols=False,
             show_progress: bool = True,
             ):
-        self.file_type_name = ''
+        self.file_type_name = file_type_name
         self.file_path = file_path
         self.file_size = os.path.getsize(file_path)
         self.processed_size = 0

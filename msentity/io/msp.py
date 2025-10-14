@@ -20,13 +20,13 @@ def read_msp(filepath,
     
     msp_reader = ReaderContext(
         filepath, 
+        file_type_name="msp",
         error_log_level=error_log_level, 
         error_log_file=error_log_file,
         encoding=encoding,
         allow_duplicate_cols=allow_duplicate_cols,
         show_progress=show_progress,
         )
-    msp_reader.file_type_name = "msp"
     
     with open(filepath, 'r', encoding=encoding) as f:
         peak_flag = False

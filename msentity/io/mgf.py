@@ -34,13 +34,13 @@ def read_mgf(filepath,
 
     mgf_reader = ReaderContext(
         filepath,
+        file_type_name="mgf",
         error_log_level=error_log_level,
         error_log_file=error_log_file,
         encoding=encoding,
         allow_duplicate_cols=allow_duplicate_cols,
         show_progress=show_progress,
     )
-    mgf_reader.file_type_name = "mgf"
 
     with open(filepath, "r", encoding=encoding) as f:
         peak_flag = False
