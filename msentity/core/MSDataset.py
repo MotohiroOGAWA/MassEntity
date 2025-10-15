@@ -370,6 +370,7 @@ class MSDataset:
                 buf = io.BytesIO(f["peaks/metadata_parquet"][()].tobytes())
                 peak_meta = pd.read_parquet(buf, engine="pyarrow")
             
+            meta_columns = None
             if "peaks/meta_columns" in f:
                 meta_columns = [col.decode('utf-8') if isinstance(col, bytes) else col for col in f["peaks/meta_columns"][:]]
 

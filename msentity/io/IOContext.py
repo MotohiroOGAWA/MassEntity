@@ -132,7 +132,8 @@ class ReaderContext:
         self.processed_size += size
         if self.pbar is not None:
             self.pbar.update(size)
-            self.pbar.set_postfix_str({"Success": f'{self.success_cnt}/{self.record_cnt}'})
+            ratio = (self.success_cnt / self.record_cnt * 100) if self.record_cnt > 0 else 0
+            self.pbar.set_postfix_str(f'Success:{self.success_cnt}/{self.record_cnt}({ratio:.2f}%)')
 
         self._reset_record()
 
