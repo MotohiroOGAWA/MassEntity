@@ -3,6 +3,7 @@ import os
 import torch
 import pandas as pd
 import numpy as np
+import tempfile
 from msentity.core.PeakSeries import PeakSeries
 from msentity.core.MSDataset import MSDataset
 
@@ -47,7 +48,7 @@ class TestMSDataset(unittest.TestCase):
         self.ds = MSDataset(spectrum_meta, self.peak_series)
         
         # Save file path
-        self.test_file = "test_dataset.h5"
+        self.test_file = os.path.join("tests", "dummy_files", "test_dataset.hdf5")
 
     def tearDown(self):
         # Clean up file if it exists
@@ -286,6 +287,63 @@ class TestMSDataset(unittest.TestCase):
                     self.ds.peaks._metadata_ref.reset_index(drop=True)
                 )
 
+    def test_hdf5_append_and_merge(self):
+        """
+        Test saving multiple MSDatasets into one HDF5 file (dataset_0, dataset_1, ...)
+        and merging them back correctly.
+        """
+        path = self.test_file
+        # --- split original dataset into two parts ---
+        ds_part1 = self.ds[:2]  # first two spectra
+        ds_part2 = self.ds[2:]  # last spectrum
+
+        # --- save each part separately ---
+        ds_part1.to_hdf5(path, mode="w")
+        self.assertTrue(os.path.exists(path))
+
+        # Append second part to same file
+        ds_part2.to_hdf5(path, mode="a")
+
+        # --- verify file structure ---
+        import h5py
+        with h5py.File(path, "r") as f:
+            groups = list(f.keys())
+            self.assertIn("dataset_0", groups)
+            self.assertIn("dataset_1", groups)
+            self.assertNotIn("dataset_2", groups)
+            self.assertIn("peaks", f["dataset_0"])
+            self.assertIn("spectrum_meta_parquet", f["dataset_1"])
+
+        # --- load merged dataset ---
+        merged = MSDataset.from_hdf5(path)
+
+        # --- check the merged dataset has same length as original ---
+        self.assertEqual(len(merged), len(self.ds))
+        self.assertEqual(merged.shape, self.ds.shape)
+
+        # --- check metadata equality (ignoring index order) ---
+        pd.testing.assert_frame_equal(
+            merged.meta.sort_values(by="spectrum_id").reset_index(drop=True),
+            self.ds.meta.sort_values(by="spectrum_id").reset_index(drop=True)
+        )
+
+        # --- check peaks are identical ---
+        torch.testing.assert_close(
+            merged.peaks._data_ref,
+            self.ds.peaks._data_ref
+        )
+
+        torch.testing.assert_close(
+            merged.peaks._offsets_ref,
+            self.ds.peaks._offsets_ref
+        )
+
+        # --- check peak metadata equality ---
+        if self.ds.peaks._metadata_ref is not None:
+            pd.testing.assert_frame_equal(
+                merged.peaks._metadata_ref.reset_index(drop=True),
+                self.ds.peaks._metadata_ref.reset_index(drop=True)
+            )
 
 if __name__ == "__main__":
     unittest.main()

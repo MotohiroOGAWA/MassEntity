@@ -1,10 +1,11 @@
 from __future__ import annotations
+import os
 import io
 import torch
 import pandas as pd
 import numpy as np
 import h5py
-from typing import overload, Optional, Sequence, Union, Any, Tuple, List
+from typing import overload, Optional, Sequence, Union, Any, Tuple, List, Literal
 from .PeakSeries import PeakSeries
 from .PeakSeries import PeakSeries, SpectrumPeaks, PeakCondition
 from .SpecCondition import SpecCondition
@@ -322,7 +323,7 @@ class MSDataset:
             columns=all_columns,
         )
 
-    def to_hdf5(self, path: str, save_ref: bool = False):
+    def to_hdf5(self, path: str, save_ref: bool = False, mode: Literal['w', 'a'] = 'w'):
         """
         Save MSDataset to one HDF5 file, embedding Parquet as binary.
 
@@ -331,55 +332,118 @@ class MSDataset:
             save_ref (bool): 
                 - False (default): Save only the sliced (view) data.
                 - True: Save the full reference data and also store the current index separately.
+            mode (str): File mode for h5py.File 
+                - 'w': overwrite existing file (default)
+                - 'a': append as a new dataset group if file already exists
         """
+        assert mode in ('w', 'a'), "mode must be 'w' (write) or 'a' (append)"
         # Decide source dataset
         dataset = self if save_ref else self.copy()
 
-        with h5py.File(path, "w") as f:
-            # ---- save peak data ----
-            f.create_dataset("peaks/data", data=dataset._peak_series._data_ref.cpu().numpy())
-            f.create_dataset("peaks/offsets", data=dataset._peak_series._offsets_ref.cpu().numpy())
-            f.create_dataset("peaks/index", data=dataset._peak_series._index.cpu().numpy())
+        os.makedirs(os.path.dirname(path), exist_ok=True)
 
-            # ---- save peak metadata (Parquet binary) ----
+        with h5py.File(path, mode) as f:
+            # --- check existing dataset groups ---
+            existing_groups = [g for g in f.keys() if g.startswith("dataset_")]
+            # --- append mode ---
+            if mode == 'a':
+                if existing_groups:
+                    # File already has some dataset_X groups → append next
+                    next_idx = max(int(g.split("_")[1]) for g in existing_groups) + 1
+                    group_name = f"dataset_{next_idx}"
+                    grp = f.create_group(group_name)
+                else:
+                    # File exists but has no dataset_X yet → treat like first write
+                    mode = 'w'
+
+            # --- write mode (overwrite) ---
+            if mode == 'w':
+                group_name = "dataset_0"
+                grp = f.create_group(group_name)
+
+            # --- save peak data ---
+            peaks_grp = grp.create_group("peaks")
+            peaks_grp.create_dataset("data", data=dataset._peak_series._data_ref.cpu().numpy())
+            peaks_grp.create_dataset("offsets", data=dataset._peak_series._offsets_ref.cpu().numpy())
+            peaks_grp.create_dataset("index", data=dataset._peak_series._index.cpu().numpy())
+
+            # --- save peak metadata (Parquet binary) ---
             if dataset._peak_series._metadata_ref is not None:
                 buf = io.BytesIO()
                 dataset._peak_series._metadata_ref.to_parquet(buf, engine="pyarrow")
-                f.create_dataset("peaks/metadata_parquet", data=np.void(buf.getvalue()))
+                peaks_grp.create_dataset("metadata_parquet", data=np.void(buf.getvalue()))
 
                 dt = h5py.string_dtype(encoding='utf-8')
-                f.create_dataset("peaks/meta_columns", data=np.array(dataset._peak_series._meta_columns, dtype=dt))
+                peaks_grp.create_dataset(
+                    "meta_columns",
+                    data=np.array(dataset._peak_series._meta_columns, dtype=dt)
+                )
 
-            # ---- save spectrum metadata (Parquet binary) ----
+            # --- save spectrum metadata (Parquet binary) ---
             buf = io.BytesIO()
             dataset._spectrum_meta_ref.to_parquet(buf, engine="pyarrow")
-            f.create_dataset("spectrum_meta_parquet", data=np.void(buf.getvalue()))
+            grp.create_dataset("spectrum_meta_parquet", data=np.void(buf.getvalue()))
 
     @staticmethod
     def from_hdf5(path: str, device: Optional[Union[str, torch.device]] = None) -> "MSDataset":
-        """Load MSDataset from one HDF5 file with embedded Parquet binaries."""
+        """
+        Load MSDataset from an HDF5 file created with to_hdf5().
+        Supports multi-group structure (dataset_0, dataset_1, ...).
+
+        Args:
+            path (str): HDF5 file path.
+            device (torch.device | str | None): Device to load tensors onto.
+
+        Returns:
+            MSDataset: Combined dataset if multiple groups exist, otherwise single dataset.
+        """
         with h5py.File(path, "r") as f:
-            # ---- load peak data ----
-            data = torch.tensor(f["peaks/data"][:], dtype=torch.float32, device=device)
-            offsets = torch.tensor(f["peaks/offsets"][:], dtype=torch.int64, device=device)
-            index = torch.tensor(f["peaks/index"][:], dtype=torch.int64, device=device)
-
-            # ---- load peak metadata ----
-            peak_meta = None
-            if "peaks/metadata_parquet" in f:
-                buf = io.BytesIO(f["peaks/metadata_parquet"][()].tobytes())
-                peak_meta = pd.read_parquet(buf, engine="pyarrow")
+            # --- Detect dataset groups ---
+            dataset_groups = [g for g in f.keys() if g.startswith("dataset_")]
             
-            meta_columns = None
-            if "peaks/meta_columns" in f:
-                meta_columns = [col.decode('utf-8') if isinstance(col, bytes) else col for col in f["peaks/meta_columns"][:]]
+            if not dataset_groups:
+                raise ValueError(f"No dataset groups found in {path}. Expected at least 'dataset_0'.")
 
-            # ---- load spectrum metadata ----
-            buf = io.BytesIO(f["spectrum_meta_parquet"][()].tobytes())
-            spectrum_meta = pd.read_parquet(buf, engine="pyarrow")
+            datasets = []
 
-        ps = PeakSeries(data, offsets, peak_meta, meta_columns, index=index, device=device)
-        return MSDataset(spectrum_meta, ps)
+            for group_name in sorted(dataset_groups, key=lambda g: int(g.split("_")[1])):
+                grp = f[group_name]
+
+                # ---- load peak data ----
+                peaks_grp = grp["peaks"]
+                data = torch.tensor(peaks_grp["data"][:], dtype=torch.float32, device=device)
+                offsets = torch.tensor(peaks_grp["offsets"][:], dtype=torch.int64, device=device)
+                index = torch.tensor(peaks_grp["index"][:], dtype=torch.int64, device=device)
+
+                # ---- load peak metadata ----
+                peak_meta = None
+                if "metadata_parquet" in peaks_grp:
+                    buf = io.BytesIO(peaks_grp["metadata_parquet"][()].tobytes())
+                    peak_meta = pd.read_parquet(buf, engine="pyarrow")
+                
+                meta_columns = None
+                if "meta_columns" in peaks_grp:
+                    meta_columns = [
+                        col.decode("utf-8") if isinstance(col, bytes) else col
+                        for col in peaks_grp["meta_columns"][:]
+                    ]
+
+                # ---- load spectrum metadata ----
+                buf = io.BytesIO(grp["spectrum_meta_parquet"][()].tobytes())
+                spectrum_meta = pd.read_parquet(buf, engine="pyarrow")
+
+                # ---- build MSDataset ----
+                ps = PeakSeries(data, offsets, peak_meta, meta_columns, index=index, device=device)
+                ds = MSDataset(spectrum_meta, ps)
+                datasets.append(ds)
+
+        # --- merge all datasets if multiple groups ---
+        if len(datasets) == 1:
+            return datasets[0]
+        else:
+            concat_dataset = MSDataset.concat(datasets, device=device)
+            concat_dataset.to_hdf5(path, mode='w')  # overwrite with merged
+            return concat_dataset
 
 class SpectrumRecord:
     """

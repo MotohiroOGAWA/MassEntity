@@ -27,13 +27,13 @@ class TestReadMGF(unittest.TestCase):
         # Expected 6 spectra
         self.assertEqual(len(ds), 6)
         # Check essential columns
-        expected_cols = ["Identifier", "SMILES", "InChIKey", "Formula", "PrecursorFormula", "ParentMass",
-                         "PrecursorMZ", "Adduct", "InstrumentType", "CollisionEnergy"]
+        expected_cols = ["IDENTIFIER", "SMILES", "InChIKey", "Formula", "PRECURSORFORMULA", "PARENTMASS",
+                         "PrecursorMZ", "ADDUCT", "InstrumentType", "CollisionEnergy"]
         for col in expected_cols:
             self.assertIn(col, meta.columns)
 
         # Spot check values
-        self.assertEqual(meta.loc[0, "Identifier"], "MassSpecID0000001")
+        self.assertEqual(meta.loc[0, "IDENTIFIER"], "MassSpecID0000001")
         self.assertAlmostEqual(float(meta.loc[1, "PrecursorMZ"]), 288.1225, places=4)
 
         # --- PeakSeries checks ---
@@ -85,7 +85,7 @@ class TestReadMGF(unittest.TestCase):
         self.assertEqual(len(ds), 4)
 
         # Spot check
-        self.assertEqual(meta.loc[0, "Identifier"], "MassSpecID0000002")
+        self.assertEqual(meta.loc[0, "IDENTIFIER"], "MassSpecID0000002")
 
     def test_write_and_read_back(self):
         ds = read_mgf(self.test_file, show_progress=False)
