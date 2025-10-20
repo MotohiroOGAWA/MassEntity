@@ -5,7 +5,8 @@ import torch
 import pandas as pd
 import numpy as np
 import h5py
-from typing import overload, Optional, Sequence, Union, Any, Tuple, List, Literal
+import json
+from typing import overload, Optional, Sequence, Union, Any, Tuple, List, Dict, Literal
 from .PeakSeries import PeakSeries
 from .PeakSeries import PeakSeries, SpectrumPeaks, PeakCondition
 from .SpecCondition import SpecCondition
@@ -16,7 +17,11 @@ class MSDataset:
         self,
         spectrum_meta: pd.DataFrame,
         peak_series: PeakSeries,
-        columns: Optional[Sequence[str]] = None
+        columns: Optional[Sequence[str]] = None,
+        description: str = "",
+        attributes: Dict[str, str] = {},
+        tags: List[str] = [],
+
     ):
         assert spectrum_meta.shape[0] == len(peak_series._offsets_ref) - 1, \
             "Number of spectra in metadata must match PeakSeries"
@@ -29,6 +34,16 @@ class MSDataset:
         self._peak_series = peak_series
         self._columns = columns  # None = all columns
 
+
+        self._description = ''
+        self.description = description
+
+        self._attributes = {}
+        self.attributes = attributes
+        
+        self._tags = []
+        self.tags = tags
+
     @property
     def columns(self) -> List[str]:
         """Return the list of columns in this MSDataset view."""
@@ -40,6 +55,87 @@ class MSDataset:
         if not all(col in self._spectrum_meta_ref.columns for col in cols):
             raise ValueError("All specified columns must be in the spectrum metadata")
         self._columns = list(cols)
+
+    @property
+    def description(self) -> str:
+        """Get dataset description."""
+        return self._description
+    @description.setter
+    def description(self, description: str):
+        """Set dataset description."""
+        if not isinstance(description, str):
+            raise TypeError("Description must be a string")
+        self._description = description
+
+    @property
+    def attributes(self) -> Dict[str, str]:
+        """Get dataset attributes."""
+        return dict(self._attributes)
+    @attributes.setter
+    def attributes(self, attributes: Dict[str, str]):
+        """Set dataset attributes."""
+        if not isinstance(attributes, dict):
+            raise TypeError("Attributes must be a dictionary")
+        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in attributes.items()):
+            raise TypeError("All attribute keys and values must be strings")
+        self._attributes = dict(attributes)
+    def set_attribute(self, key: str, value: str) -> bool:
+        """Add or update a single attribute. Returns True if new key was added."""
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("Both key and value must be strings")
+        self._attributes[key] = value
+        return True
+    def remove_attribute(self, key: str) -> bool:
+        """Remove an attribute if it exists. Returns True if removed."""
+        if key in self._attributes:
+            del self._attributes[key]
+            return True
+        return False
+    def has_attribute(self, key: str) -> bool:
+        """Check if an attribute key exists."""
+        return key in self._attributes
+    def clear_attributes(self):
+        """Remove all attributes."""
+        self._attributes.clear()
+
+    @property
+    def tags(self) -> List[str]:
+        """Get dataset tags."""
+        return list(self._tags)
+    @tags.setter
+    def tags(self, tags: List[str]):
+        """Set dataset tags."""
+        if not isinstance(tags, list):
+            raise TypeError("Tags must be a list")
+        if any(not isinstance(t, str) for t in tags):
+            raise TypeError("All tags must be strings")
+        self._tags = list(tags)
+    def add_tag(self, tag: str) -> bool:
+        """Add a tag if it doesn't exist. Returns True if added."""
+        if not isinstance(tag, str):
+            raise TypeError("Tag must be a string")
+        if tag not in self._tags:
+            self._tags.append(tag)
+            return True
+        return False
+    def remove_tag(self, tag: str) -> bool:
+        """Remove a tag if it exists. Returns True if removed."""
+        if tag in self._tags:
+            self._tags.remove(tag)
+            return True
+        return False
+    def remove_tag_at(self, index: int) -> bool:
+        """Remove a tag at a specific index. Returns True if removed."""
+        if 0 <= index < len(self._tags):
+            del self._tags[index]
+            return True
+        return False
+    def has_tag(self, tag: str) -> bool:
+        """Check if a tag exists."""
+        return tag in self._tags
+    def clear_tags(self):
+        """Remove all tags."""
+        self._tags.clear()
 
     @property
     def meta(self) -> pd.DataFrame:
@@ -95,7 +191,10 @@ class MSDataset:
             return MSDataset(
                 self._spectrum_meta_ref,
                 self._peak_series[i],
-                columns=self._columns
+                columns=self._columns,
+                description=self.description,
+                attributes=self.attributes,
+                tags=self.tags,
             )
         elif isinstance(i, pd.Series) and i.dtype == bool:
             # Boolean mask Series
@@ -106,7 +205,10 @@ class MSDataset:
             return MSDataset(
                 self._spectrum_meta_ref,
                 self._peak_series[indices],
-                columns=self._columns
+                columns=self._columns,
+                description=self.description,
+                attributes=self.attributes,
+                tags=self.tags,
             )
         else:
             raise TypeError(f"Invalid index type: {type(i)}")
@@ -149,7 +251,10 @@ class MSDataset:
         return MSDataset(
             self.meta.copy(),
             self._peak_series.copy(),
-            columns=list(self._columns)
+            columns=list(self._columns),
+            description=self.description,
+            attributes=self.attributes,
+            tags=self.tags,
         )
 
     def __len__(self) -> int:
@@ -200,7 +305,10 @@ class MSDataset:
             return MSDataset(
                 self._spectrum_meta_ref,
                 self._peak_series.to(device, in_place=False),
-                columns=self._columns
+                columns=self._columns,
+                description=self.description,
+                attributes=self.attributes,
+                tags=self.tags,
             )
     
     def sort_by(self, column: str, ascending: bool = True) -> "MSDataset":
@@ -214,7 +322,10 @@ class MSDataset:
         return MSDataset(
             self._spectrum_meta_ref,
             self._peak_series[order],
-            columns=self._columns
+            columns=self._columns,
+            description=self.description,
+            attributes=self.attributes,
+            tags=self.tags,
         )
 
     def filter(self, condition: Union[PeakCondition, SpecCondition]) -> "MSDataset":
@@ -236,7 +347,10 @@ class MSDataset:
             return MSDataset(
                 self._spectrum_meta_ref.iloc[filtered_peak_series._index.cpu()][self._columns].reset_index(drop=True),
                 filtered_peak_series,
-                columns=list(self._columns)
+                columns=list(self._columns),
+                description=self.description,
+                attributes=self.attributes,
+                tags=self.tags,
             )
         elif isinstance(condition, SpecCondition):
             mask = condition.evaluate(self)  # torch.BoolTensor of shape [n_spectra]
@@ -244,13 +358,16 @@ class MSDataset:
             return MSDataset(
                 self._spectrum_meta_ref.iloc[self._peak_series._index[indices].cpu()][self._columns].reset_index(drop=True),
                 self._peak_series[indices].copy(),
-                columns=list(self._columns)
+                columns=list(self._columns),
+                description=self.description,
+                attributes=self.attributes,
+                tags=self.tags,
             )
         else:
             raise TypeError("Unsupported condition type")
         
     @classmethod
-    def concat(cls, datasets: List["MSDataset"], device: torch.device=None) -> "MSDataset":
+    def concat(cls, datasets: List["MSDataset"], device: torch.device=None, description: str = "", attributes: Dict[str, str] = {}, tags: List[str] = []) -> "MSDataset":
         """
         Concatenate multiple MSDataset objects into one.
 
@@ -321,6 +438,9 @@ class MSDataset:
             spectrum_meta,
             peak_series,
             columns=all_columns,
+            description=description,
+            attributes=attributes,
+            tags=tags,
         )
 
     def to_hdf5(self, path: str, save_ref: bool = False, mode: Literal['w', 'a'] = 'w'):
@@ -343,6 +463,16 @@ class MSDataset:
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
         with h5py.File(path, mode) as f:
+            # --- create or update top-level metadata ---
+            if "metadata" not in f:
+                meta_grp = f.create_group("metadata")
+            else:
+                meta_grp = f["metadata"]
+
+            meta_grp.attrs["description"] = dataset.description
+            meta_grp.attrs["attributes_json"] = json.dumps(dataset.attributes)
+            meta_grp.attrs["tags_json"] = json.dumps(dataset.tags)
+
             # --- check existing dataset groups ---
             existing_groups = [g for g in f.keys() if g.startswith("dataset_")]
             # --- append mode ---
@@ -398,9 +528,18 @@ class MSDataset:
             MSDataset: Combined dataset if multiple groups exist, otherwise single dataset.
         """
         with h5py.File(path, "r") as f:
+            # --- Load global metadata from root-level /metadata ---
+            description = ""
+            attributes = {}
+            tags = []
+            if "metadata" in f:
+                meta_grp = f["metadata"]
+                description = meta_grp.attrs.get("description", "")
+                attributes = json.loads(meta_grp.attrs.get("attributes_json", "{}"))
+                tags = json.loads(meta_grp.attrs.get("tags_json", "[]"))
+                
             # --- Detect dataset groups ---
             dataset_groups = [g for g in f.keys() if g.startswith("dataset_")]
-            
             if not dataset_groups:
                 raise ValueError(f"No dataset groups found in {path}. Expected at least 'dataset_0'.")
 
@@ -434,14 +573,14 @@ class MSDataset:
 
                 # ---- build MSDataset ----
                 ps = PeakSeries(data, offsets, peak_meta, meta_columns, index=index, device=device)
-                ds = MSDataset(spectrum_meta, ps)
+                ds = MSDataset(spectrum_meta, ps, description=description, attributes=attributes, tags=tags)
                 datasets.append(ds)
 
         # --- merge all datasets if multiple groups ---
         if len(datasets) == 1:
             return datasets[0]
         else:
-            concat_dataset = MSDataset.concat(datasets, device=device)
+            concat_dataset = MSDataset.concat(datasets, device=device, description=description, attributes=attributes, tags=tags)
             concat_dataset.to_hdf5(path, mode='w')  # overwrite with merged
             return concat_dataset
 
@@ -632,6 +771,9 @@ class SpectrumRecord:
                 .copy(),
                 peaks_copy._peak_series,  # PeakSeries inside SpectrumPeaks
                 columns=self._ms_dataset._columns,
+                description=self._ms_dataset.description,
+                attributes=self._ms_dataset.attributes,
+                tags=self._ms_dataset.tags,
             ),
             index=0,
         )
