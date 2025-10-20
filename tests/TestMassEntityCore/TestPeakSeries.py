@@ -1,6 +1,7 @@
 import unittest
 import torch
 import pandas as pd
+import numpy as np
 from msentity.core.PeakSeries import PeakSeries, SpectrumPeaks
 
 
@@ -84,6 +85,41 @@ class TestPeakSeries(unittest.TestCase):
         for i, sp in enumerate(spectra):
             self.assertEqual(len(sp), self.ps.n_peaks(i))
             torch.testing.assert_close(sp.data, self.ps[i].data)
+
+    def test_add_new_column_subset(self):
+        sub_ps = self.ps[:2]  # spectra 0 and 1
+        sub_ps["flag"] = [1] * sub_ps.n_all_peaks  # assign to all peaks in first 2 spectra
+
+        col = self.ps._metadata_ref["flag"].values
+        total_peaks = self.ps.n_all_peaks
+        first_two = sub_ps.n_all_peaks
+        self.assertTrue(np.all(col[:first_two] == 1))
+        self.assertTrue(np.all(np.isnan(col[first_two:])))
+
+    def test_scalar_assignment_subset(self):
+        sub_ps = self.ps[1:3]  # spectra 1 and 2
+        sub_ps["status"] = "ok"
+
+        col = self.ps._metadata_ref["status"].values
+        s1_start = self.offsets[1]
+        s3_end = self.offsets[3]
+        # Spectra 1–2 range should be "ok"
+        self.assertTrue(np.all(col[s1_start:s3_end] == "ok"))
+        # Spectrum 0 range (first 4 peaks) should be NaN
+        self.assertTrue(np.all(pd.isna(col[:self.offsets[1]])))
+
+    def test_update_existing_column_subset(self):
+        # Add a column first
+        self.ps["label"] = np.array(["x"] * self.ps.n_all_peaks, dtype=object)
+        sub_ps = self.ps[1:3]  # spectra 1 and 2
+        sub_ps["label"] = np.array(["A"] * sub_ps.n_all_peaks, dtype=object)
+
+        col = self.ps._metadata_ref["label"].values
+        # Spectrum 0 peaks should remain "x"
+        self.assertTrue(np.all(col[:self.offsets[1]] == "x"))
+        # Spectra 1–2 should be updated to "A"
+        self.assertTrue(np.all(col[self.offsets[1]:self.offsets[3]] == "A"))
+
 
     def test_normalize_vectorized(self):
         ps_norm = self.ps.normalize(scale=1.0, method="vectorized", in_place=False)

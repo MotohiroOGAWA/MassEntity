@@ -182,6 +182,28 @@ class PeakSeries:
         return int((self._offsets_ref[1:] - self._offsets_ref[:-1])[self._index].sum())
 
     @property
+    def peak_indices(self) -> torch.Tensor:
+        """
+        Return the global peak indices in the underlying dataset
+        corresponding to the current view (`self._index`).
+
+        Example:
+            >>> ps.peak_indices
+            tensor([0, 1, 2, 10, 11, 12, 13, 20, 21])
+        """
+        # Collect index ranges for all spectra in this view
+        ranges = [
+            torch.arange(self._offsets_ref[i], self._offsets_ref[i + 1], dtype=torch.int64, device=self._offsets_ref.device)
+            for i in self._index
+        ]
+
+        if len(ranges) == 0:
+            return torch.empty(0, dtype=torch.int64, device=self._offsets_ref.device)
+
+        # Concatenate all indices into one 1D tensor
+        return torch.cat(ranges, dim=0)
+
+    @property
     def length(self) -> torch.Tensor:
         lengths = self._offsets_ref[1:] - self._offsets_ref[:-1]
         return lengths[self._index]
@@ -224,6 +246,40 @@ class PeakSeries:
             idx_tensor = torch.as_tensor(i, dtype=torch.int64, device=self.device)
             new_index = self._index[idx_tensor]
             return PeakSeries(self._data_ref, self._offsets_ref, self._metadata_ref, self.meta_columns, index=new_index)
+
+    def __setitem__(self, key: str, value: Union[Sequence, pd.Series, Any]):
+        """
+        Add or update a metadata column for the current MSDataset view.
+
+        - If key exists, update values only for this view (subset).
+        - If key is new, create it with NaN for all rows, then fill only this view.
+        """
+        idx = self.peak_indices.cpu().numpy()          # indices of this view
+        n_total_peaks = (self._offsets_ref[-1] - self._offsets_ref[0]).item()    # total rows in the underlying DataFrame
+        n_view_peaks = self.n_all_peaks  # total peaks in this view
+
+        # Ensure the column exists in the underlying metadata
+        if key not in self._metadata_ref.columns:
+            self._metadata_ref[key] = np.full(n_total_peaks, np.nan)
+
+        # Prepare the value(s) to assign
+        if isinstance(value, (list, np.ndarray, torch.Tensor, pd.Series)):
+            if len(value) != n_view_peaks:
+                raise ValueError(
+                    f"Length of values ({len(value)}) must match number of spectra in this view ({n_view_peaks})"
+                )
+            if isinstance(value, torch.Tensor):
+                value = value.cpu().numpy()
+            # Assign only for indices of this view
+            self._metadata_ref.loc[idx, key] = value
+        else:
+            # scalar → assign only for this view
+            self._metadata_ref.loc[idx, key] = value
+
+        # Track column in self._columns
+        if key not in self._meta_columns:
+            self._meta_columns.append(key)
+
 
     # --- copy materializes real data ---
     def copy(self) -> "PeakSeries":
