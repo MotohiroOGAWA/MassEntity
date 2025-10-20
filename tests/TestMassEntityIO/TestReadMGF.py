@@ -93,7 +93,7 @@ class TestReadMGF(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
             out_path = os.path.join(tmpdir, "out.mgf")
 
-            write_mgf(ds, out_path)
+            write_mgf(ds, out_path, show_progress=False)
             ds2 = read_mgf(out_path, show_progress=False)
 
             self.assertEqual(len(ds), len(ds2))
@@ -106,7 +106,7 @@ class TestReadMGF(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file_with_peak_meta)) as tmpdir:
             out_path = os.path.join(tmpdir, "out.mgf")
 
-            write_mgf(ds, out_path)
+            write_mgf(ds, out_path, show_progress=False)
             ds2 = read_mgf(out_path, show_progress=False)
 
             self.assertEqual(len(ds), len(ds2))
@@ -119,7 +119,7 @@ class TestReadMGF(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(self.test_file)) as tmpdir:
             out_path = os.path.join(tmpdir, "out_header.mgf")
 
-            write_mgf(ds, out_path, header_map=header_map)
+            write_mgf(ds, out_path, header_map=header_map, show_progress=False)
             ds2, header_map2 = read_mgf(out_path, return_header_map=True, show_progress=False)
 
             self.assertEqual(len(ds), len(ds2))
@@ -161,7 +161,7 @@ class TestReadMGF(unittest.TestCase):
             out_path = os.path.join(tmpdir, "out.mgf")
 
             # Write dataset to MGF
-            write_mgf(ds, out_path)
+            write_mgf(ds, out_path, show_progress=False)
 
             # Read back the written file
             ds2 = read_mgf(out_path, show_progress=False)

@@ -132,7 +132,7 @@ class TestReadMSP(unittest.TestCase):
             out_path = os.path.join(tmpdir, "out.msp")
 
             # Write dataset to MSP
-            write_msp(ds, out_path)
+            write_msp(ds, out_path, show_progress=False)
 
             # Read back the written file
             ds2 = read_msp(out_path, show_progress=False)
@@ -150,7 +150,7 @@ class TestReadMSP(unittest.TestCase):
             out_path = os.path.join(tmpdir, "out.msp")
 
             # Write dataset to MSP
-            write_msp(ds, out_path)
+            write_msp(ds, out_path, show_progress=False)
 
             # Read back the written file
             ds2 = read_msp(out_path, show_progress=False)
@@ -168,7 +168,7 @@ class TestReadMSP(unittest.TestCase):
             out_path = os.path.join(tmpdir, "out_header.msp")
 
             # Write using header_map obtained from read_msp
-            write_msp(ds, out_path, header_map=header_map)
+            write_msp(ds, out_path, header_map=header_map, show_progress=False)
 
             # Read file again and get new header_map
             ds2, header_map2 = read_msp(out_path, return_header_map=True, show_progress=False)
@@ -215,7 +215,7 @@ class TestReadMSP(unittest.TestCase):
             out_path = os.path.join(tmpdir, "out.msp")
 
             # Write dataset to MSP
-            write_msp(ds, out_path)
+            write_msp(ds, out_path, show_progress=False)
 
             # Read back the written file
             ds2 = read_msp(out_path, show_progress=False)
