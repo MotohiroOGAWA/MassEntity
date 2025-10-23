@@ -259,6 +259,8 @@ class PeakSeries:
         n_view_peaks = self.n_all_peaks  # total peaks in this view
 
         # Ensure the column exists in the underlying metadata
+        if self._metadata_ref is None:
+            self._metadata_ref = pd.DataFrame(index=range(n_total_peaks))
         if key not in self._metadata_ref.columns:
             self._metadata_ref[key] = np.full(n_total_peaks, np.nan)
 
