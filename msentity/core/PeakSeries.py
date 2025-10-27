@@ -682,17 +682,41 @@ class SpectrumPeaks:
         for i in range(len(self)):
             yield self[i]
 
-    def __getitem__(self, i: int) -> PeakEntry:
-        """Return the i-th peak as PeakEntry."""
-        if not (0 <= i < len(self)):
-            raise IndexError(f"Index {i} out of range for {len(self)} peaks")
-        j = self._s + i
-        mz, inten = self._peak_series._data_ref[j].tolist()
-        meta = None
-        if self._peak_series._metadata_ref is not None:
-            meta = self._peak_series._metadata_ref.iloc[j]
-            meta = {k: meta[k] for k in self._peak_series.meta_columns}
-        return PeakEntry(mz, inten, dict(meta) if meta is not None else None)
+    @overload
+    def __getitem__(self, i: int) -> "PeakEntry": ...
+    
+    @overload
+    def __getitem__(self, key: str) -> pd.Series: ...
+
+    def __getitem__(self, key: Union[int, str]) -> Union["PeakEntry", pd.Series]:
+        """
+        Overloaded getter:
+        - If `key` is int: return the i-th peak as PeakEntry.
+        - If `key` is str: return the corresponding metadata column as pandas.Series.
+        """
+        # --- Case 1: integer index (Peak access) ---
+        if isinstance(key, int):
+            if not (0 <= key < len(self)):
+                raise IndexError(f"Index {key} out of range for {len(self)} peaks")
+            j = self._s + key
+            mz, inten = self._peak_series._data_ref[j].tolist()
+            meta = None
+            if self._peak_series._metadata_ref is not None:
+                meta = self._peak_series._metadata_ref.iloc[j]
+                meta = {k: meta[k] for k in self._peak_series.meta_columns}
+            return PeakEntry(mz, inten, dict(meta) if meta is not None else None)
+
+        # --- Case 2: string key (Metadata column access) ---
+        elif isinstance(key, str):
+            if self._peak_series._metadata_ref is None:
+                raise KeyError(f"No metadata is available (metadata_ref is None)")
+            if key not in self._peak_series.meta_columns:
+                raise KeyError(f"Metadata column '{key}' not found in meta_columns")
+            # return the column for this spectrum slice
+            return self._peak_series._metadata_ref.iloc[self._s:self._e][key].reset_index(drop=True)
+
+        else:
+            raise TypeError(f"Invalid key type: {type(key)} (expected int or str)")
     
     def __setitem__(self, key: str, value: Union[Sequence, pd.Series, Any]):
         """
