@@ -683,6 +683,11 @@ class SpectrumRecord:
 
     # ------------------- properties -------------------
     @property
+    def columns(self) -> List[str]:
+        """Return the list of columns in the parent MSDataset."""
+        return self._ms_dataset._columns.copy()
+    
+    @property
     def n_peaks(self) -> int:
         return len(self.peaks)
 
