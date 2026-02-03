@@ -3,6 +3,9 @@ import os
 import io
 import torch
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from pyarrow.lib import ArrowCapacityError
 import numpy as np
 import h5py
 import json
@@ -455,8 +458,27 @@ class MSDataset:
 
     @staticmethod
     def _read_parquet_from_bytes(blob: bytes) -> pd.DataFrame:
-        """Deserialize Parquet bytes into a DataFrame."""
-        return pd.read_parquet(io.BytesIO(blob), engine="pyarrow")
+        """
+        Read Parquet bytes into a DataFrame.
+
+        - Fast path: pandas read_parquet
+        - Fallback: if ArrowCapacityError occurs, stream-read by small batches via pyarrow
+        """
+        # --- 1) Fast path ---
+        try:
+            return pd.read_parquet(io.BytesIO(blob), engine="pyarrow")
+        except ArrowCapacityError:
+            pass
+
+        # --- 2) Fallback: batch/stream read (avoids building huge Arrow arrays at once) ---
+        pf = pq.ParquetFile(pa.BufferReader(blob))
+
+        dfs = []
+        for batch in pf.iter_batches(batch_size=200_000):
+            # Convert each small RecordBatch to pandas and append
+            dfs.append(pa.Table.from_batches([batch]).to_pandas())
+
+        return pd.concat(dfs, ignore_index=True)
 
     # -------------------------------------------------
     # HDF5 bytes I/O helpers
