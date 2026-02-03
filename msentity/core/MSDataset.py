@@ -13,6 +13,10 @@ from .SpecCondition import SpecCondition
 
 
 class MSDataset:
+    # Keep a margin under Arrow's ~2GB cap
+    _ARROW_BYTES_LIMIT = 2_147_483_646
+    _MAX_PART_BYTES = 1_000_000_000
+
     def __init__(
         self,
         spectrum_meta: pd.DataFrame,
@@ -522,10 +526,69 @@ class MSDataset:
         grp: h5py.Group,
         name: str,
         df: pd.DataFrame,
+        *,
+        max_part_bytes: int | None = None,
+        initial_rows: int = 2_000_000,
     ) -> None:
-        """Save a DataFrame as Parquet bytes into HDF5 (new format)."""
+        """
+        Save a DataFrame as Parquet bytes into HDF5.
+
+        If the serialized Parquet blob exceeds max_part_bytes, split by rows and
+        save multiple parts: name__part_000, name__part_001, ...
+        """
+        if max_part_bytes is None:
+            max_part_bytes = cls._MAX_PART_BYTES
+
+        # --- remove existing datasets (single + parts) ---
+        if name in grp:
+            del grp[name]
+        i = 0
+        while f"{name}__part_{i:03d}" in grp:
+            del grp[f"{name}__part_{i:03d}"]
+            i += 1
+        for k in (f"{name}__chunked", f"{name}__num_parts"):
+            if k in grp.attrs:
+                del grp.attrs[k]
+
+        # --- try single-part first ---
         blob = cls._dump_parquet_to_bytes(df)
-        cls._save_bytes_h5(grp, name, blob)
+        if len(blob) <= max_part_bytes:
+            cls._save_bytes_h5(grp, name, blob)  # new format (uint8)
+            grp.attrs[f"{name}__chunked"] = False
+            grp.attrs[f"{name}__num_parts"] = 1
+            return
+
+        # --- split by rows with measured bytes ---
+        n = len(df)
+        rows = min(initial_rows, max(1, n))
+        parts: list[bytes] = []
+
+        start = 0
+        while start < n:
+            end = min(n, start + rows)
+            chunk_df = df.iloc[start:end].reset_index(drop=True)
+
+            chunk_blob = cls._dump_parquet_to_bytes(chunk_df)
+
+            # Too big -> reduce rows and retry same start
+            if len(chunk_blob) > max_part_bytes:
+                if rows == 1:
+                    raise ValueError(
+                        f"Even 1 row Parquet exceeds max_part_bytes={max_part_bytes}. "
+                        "A cell may contain an extremely large object."
+                    )
+                rows = max(1, rows // 2)
+                continue
+
+            parts.append(chunk_blob)
+            start = end
+
+        # --- write parts ---
+        for i, part_blob in enumerate(parts):
+            cls._save_bytes_h5(grp, f"{name}__part_{i:03d}", part_blob)
+
+        grp.attrs[f"{name}__chunked"] = True
+        grp.attrs[f"{name}__num_parts"] = len(parts)
 
     @classmethod
     def _load_parquet_h5(
@@ -533,8 +596,36 @@ class MSDataset:
         grp: h5py.Group,
         name: str,
     ) -> pd.DataFrame:
-        """Load a DataFrame stored as Parquet bytes in HDF5."""
+        """
+        Load a DataFrame stored as Parquet bytes in HDF5.
+
+        Supports:
+          - chunked format: name__part_000, name__part_001, ...
+          - single dataset: name (old np.void or new uint8)
+        """
+        # --- chunked path ---
+        if bool(grp.attrs.get(f"{name}__chunked", False)):
+            num_parts = int(grp.attrs.get(f"{name}__num_parts", 0))
+            if num_parts <= 0:
+                raise ValueError(f"Invalid num_parts for '{name}' in '{grp.name}'")
+
+            dfs: list[pd.DataFrame] = []
+            for i in range(num_parts):
+                blob = cls._load_bytes_h5(grp, f"{name}__part_{i:03d}")
+                dfs.append(cls._read_parquet_from_bytes(blob))
+            return pd.concat(dfs, ignore_index=True)
+
+        # --- single dataset path (old/new) ---
         blob = cls._load_bytes_h5(grp, name)
+
+        # If this is a single blob > 2GB, pyarrow cannot read it safely.
+        # This file must be re-saved using the chunked format.
+        if len(blob) > cls._ARROW_BYTES_LIMIT:
+            raise ValueError(
+                f"'{name}' is stored as a single Parquet blob of {len(blob)} bytes (> ~2GB). "
+                "Cannot load with pyarrow. Re-save with chunked Parquet storage."
+            )
+
         return cls._read_parquet_from_bytes(blob)
     
 
