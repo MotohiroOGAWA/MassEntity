@@ -3,6 +3,7 @@ import os
 import io
 import torch
 import pandas as pd
+import pyarrow.parquet as pq
 import numpy as np
 import h5py
 import json
@@ -462,6 +463,20 @@ class MSDataset:
         """Deserialize Parquet bytes into a DataFrame."""
         return pd.read_parquet(io.BytesIO(blob), engine="pyarrow")
 
+    @staticmethod
+    def _parquet_uncompressed_bytes(blob: bytes) -> int:
+        """
+        Estimate uncompressed bytes from Parquet metadata.
+
+        This does NOT decode the whole table; it reads only the Parquet footer/metadata.
+        """
+        pf = pq.ParquetFile(io.BytesIO(blob))
+        md = pf.metadata
+        total = 0
+        for i in range(md.num_row_groups):
+            total += md.row_group(i).total_byte_size
+        return int(total)
+
     # -------------------------------------------------
     # HDF5 bytes I/O helpers
     #   - write: always new format (uint8 1D array)
@@ -552,7 +567,9 @@ class MSDataset:
 
         # --- try single-part first ---
         blob = cls._dump_parquet_to_bytes(df)
-        if len(blob) <= max_part_bytes:
+        uncomp = cls._parquet_uncompressed_bytes(blob)
+        cur_bytes = max(len(blob), uncomp)
+        if cur_bytes <= max_part_bytes:
             cls._save_bytes_h5(grp, name, blob)  # new format (uint8)
             grp.attrs[f"{name}__chunked"] = False
             grp.attrs[f"{name}__num_parts"] = 1
@@ -569,9 +586,11 @@ class MSDataset:
             chunk_df = df.iloc[start:end].reset_index(drop=True)
 
             chunk_blob = cls._dump_parquet_to_bytes(chunk_df)
+            chunk_uncomp = cls._parquet_uncompressed_bytes(chunk_blob)
+            chunk_bytes = max(len(chunk_blob), chunk_uncomp)
 
             # Too big -> reduce rows and retry same start
-            if len(chunk_blob) > max_part_bytes:
+            if chunk_bytes > max_part_bytes:
                 if rows == 1:
                     raise ValueError(
                         f"Even 1 row Parquet exceeds max_part_bytes={max_part_bytes}. "
