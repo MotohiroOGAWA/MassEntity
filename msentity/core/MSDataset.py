@@ -687,16 +687,17 @@ class MSDataset:
 
     @staticmethod
     def from_hdf5(
-        path: str, 
+        path: str,
         device: Optional[Union[str, torch.device]] = None,
         load_peak_meta: bool = True,
-        ) -> "MSDataset":
+    ) -> "MSDataset":
         """
         Load MSDataset from HDF5.
 
-        Supports both:
+        Supports:
         - Old files (np.void scalar Parquet storage)
         - New files (uint8 array Parquet storage)
+        - New chunked Parquet storage (name__part_000, name__part_001, ...)
         """
         with h5py.File(path, "r") as f:
             # --- global metadata ---
@@ -714,11 +715,13 @@ class MSDataset:
                 [g for g in f.keys() if g.startswith("dataset_")],
                 key=lambda g: int(g.split("_")[1]),
             )
+            if not dataset_groups:
+                raise ValueError(f"No dataset groups found in {path}. Expected at least 'dataset_0'.")
 
             datasets = []
 
-            for name in dataset_groups:
-                grp = f[name]
+            for group_name in dataset_groups:
+                grp = f[group_name]
 
                 # --- peak arrays ---
                 peaks_grp = grp["peaks"]
@@ -726,11 +729,16 @@ class MSDataset:
                 offsets = torch.tensor(peaks_grp["offsets"][:], dtype=torch.int64, device=device)
                 index = torch.tensor(peaks_grp["index"][:], dtype=torch.int64, device=device)
 
-                # --- peak metadata ---
+                # --- peak metadata (optional, supports chunked) ---
                 peak_meta = None
-                if load_peak_meta and "metadata_parquet" in peaks_grp:
-                    peak_meta = MSDataset._load_parquet_h5(peaks_grp, "metadata_parquet")
+                if load_peak_meta:
+                    # Load if either:
+                    # - a single dataset exists (old/new), or
+                    # - chunked attributes exist
+                    if ("metadata_parquet" in peaks_grp) or bool(peaks_grp.attrs.get("metadata_parquet__chunked", False)):
+                        peak_meta = MSDataset._load_parquet_h5(peaks_grp, "metadata_parquet")
 
+                # --- peak meta column names ---
                 meta_columns = None
                 if "meta_columns" in peaks_grp:
                     meta_columns = [
@@ -738,9 +746,17 @@ class MSDataset:
                         for c in peaks_grp["meta_columns"][:]
                     ]
 
-                # --- spectrum metadata ---
+                # --- spectrum metadata (supports chunked) ---
+                # Load if either:
+                # - a single dataset exists (old/new), or
+                # - chunked attributes exist
+                if ("spectrum_meta_parquet" not in grp) and (not bool(grp.attrs.get("spectrum_meta_parquet__chunked", False))):
+                    raise KeyError(
+                        f"Missing spectrum metadata 'spectrum_meta_parquet' (or chunked parts) in group '{grp.name}'."
+                    )
                 spectrum_meta = MSDataset._load_parquet_h5(grp, "spectrum_meta_parquet")
 
+                # --- build MSDataset ---
                 ps = PeakSeries(data, offsets, peak_meta, meta_columns, index=index, device=device)
                 ds = MSDataset(
                     spectrum_meta,
