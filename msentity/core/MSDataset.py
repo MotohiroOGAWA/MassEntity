@@ -595,7 +595,11 @@ class MSDataset:
             )
 
     @staticmethod
-    def from_hdf5(path: str, device: Optional[Union[str, torch.device]] = None) -> "MSDataset":
+    def from_hdf5(
+        path: str, 
+        device: Optional[Union[str, torch.device]] = None,
+        load_peak_meta: bool = True,
+        ) -> "MSDataset":
         """
         Load MSDataset from HDF5.
 
@@ -633,7 +637,7 @@ class MSDataset:
 
                 # --- peak metadata ---
                 peak_meta = None
-                if "metadata_parquet" in peaks_grp:
+                if load_peak_meta and "metadata_parquet" in peaks_grp:
                     peak_meta = MSDataset._load_parquet_h5(peaks_grp, "metadata_parquet")
 
                 meta_columns = None
