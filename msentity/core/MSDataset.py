@@ -49,6 +49,27 @@ class MSDataset:
         self._tags = []
         self.tags = tags
 
+    def __repr__(self) -> str:
+        return (
+            f"MSDataset(n_spectra={len(self)}, "
+            f"n_peaks={self._peak_series.n_all_peaks}, "
+            f"columns={self._columns})"
+        )
+
+    def __len__(self) -> int:
+        """Number of spectra in this dataset (rows of spectrum_meta)."""
+        return len(self._peak_series)
+    
+    def __iter__(self):
+        """
+        Iterate over spectra in this MSDataset, yielding SpectrumRecord.
+        Example:
+            for rec in ms_dataset:
+                print(rec.n_peaks, rec["Name"])
+        """
+        for i in range(len(self)):
+            yield self[i]
+
     @property
     def columns(self) -> List[str]:
         """Return the list of columns in this MSDataset view."""
@@ -60,6 +81,27 @@ class MSDataset:
         if not all(col in self._spectrum_meta_ref.columns for col in cols):
             raise ValueError("All specified columns must be in the spectrum metadata")
         self._columns = list(cols)
+
+    @property
+    def n_rows(self) -> int:
+        """Number of spectra in this MSDataset view."""
+        return self.shape[0]
+
+    @property
+    def n_columns(self) -> int:
+        """Number of columns in this MSDataset view."""
+        return self.shape[1]
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """(n_spectra, n_columns) like DataFrame.shape."""
+        cols = self._columns if self._columns is not None else []
+        return (len(self), len(cols))
+    
+    @property
+    def n_all_peaks(self) -> int:
+        """Total number of peaks across all spectra in this MSDataset view."""
+        return self._peak_series.n_all_peaks
 
     @property
     def description(self) -> str:
@@ -260,33 +302,6 @@ class MSDataset:
             description=self.description,
             attributes=self.attributes,
             tags=self.tags,
-        )
-
-    def __len__(self) -> int:
-        """Number of spectra in this dataset (rows of spectrum_meta)."""
-        return len(self._peak_series)
-    
-    def __iter__(self):
-        """
-        Iterate over spectra in this MSDataset, yielding SpectrumRecord.
-        Example:
-            for rec in ms_dataset:
-                print(rec.n_peaks, rec["Name"])
-        """
-        for i in range(len(self)):
-            yield self[i]
-
-    @property
-    def shape(self) -> tuple[int, int]:
-        """(n_spectra, n_columns) like DataFrame.shape."""
-        cols = self._columns if self._columns is not None else []
-        return (len(self), len(cols))
-
-    def __repr__(self) -> str:
-        return (
-            f"MSDataset(n_spectra={len(self)}, "
-            f"n_peaks={self._peak_series.n_all_peaks}, "
-            f"columns={self._columns})"
         )
     
     @property
