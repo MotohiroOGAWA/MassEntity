@@ -7,11 +7,18 @@ import pyarrow.parquet as pq
 import numpy as np
 import h5py
 import json
+from dataclasses import dataclass
 from typing import overload, Optional, Sequence, Union, Any, Tuple, List, Dict, Literal
 from .PeakSeries import PeakSeries
 from .PeakSeries import PeakSeries, SpectrumPeaks, PeakCondition
 from .SpecCondition import SpecCondition
 
+
+@dataclass(frozen=True)
+class MSDatasetMeta:
+    description: str
+    attributes: Dict[str, str]
+    tags: List[str]
 
 class MSDataset:
     # Keep a margin under Arrow's ~2GB cap
@@ -803,6 +810,52 @@ class MSDataset:
 
         return datasets[0] if len(datasets) == 1 else MSDataset.concat(datasets, device=device)
 
+    @staticmethod
+    def read_dataset_meta(path: str) -> MSDatasetMeta:
+        """Read only top-level metadata from an MSDataset HDF5 file."""
+        with h5py.File(path, "r") as f:
+            if "metadata" not in f:
+                raise KeyError("HDF5 does not contain '/metadata' group")
+
+            meta_grp = f["metadata"]
+
+            # attrs may be stored as bytes depending on h5py/HDF5 settings
+            def _as_str(x) -> str:
+                if x is None:
+                    return ""
+                if isinstance(x, (bytes, bytearray)):
+                    return x.decode("utf-8")
+                return str(x)
+
+            description = _as_str(meta_grp.attrs.get("description", ""))
+
+            attributes_json = _as_str(meta_grp.attrs.get("attributes_json", "{}"))
+            tags_json = _as_str(meta_grp.attrs.get("tags_json", "[]"))
+
+            try:
+                attributes = json.loads(attributes_json) if attributes_json else {}
+            except json.JSONDecodeError:
+                attributes = {}
+            try:
+                tags = json.loads(tags_json) if tags_json else []
+            except json.JSONDecodeError:
+                tags = []
+
+            if not isinstance(attributes, dict):
+                attributes = {}
+            else:
+                attributes = {str(k): str(v) for k, v in attributes.items()}
+
+            if not isinstance(tags, list):
+                tags = []
+            else:
+                tags = [str(t) for t in tags]
+
+            return MSDatasetMeta(
+                description=description,
+                attributes=attributes,
+                tags=tags,
+            )
 
 class SpectrumRecord:
     """

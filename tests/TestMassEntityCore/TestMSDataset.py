@@ -345,5 +345,30 @@ class TestMSDataset(unittest.TestCase):
                 self.ds.peaks._metadata_ref.reset_index(drop=True)
             )
 
+    def test_read_dataset_meta_hdf5(self):
+        # Save
+        self.ds.to_hdf5(self.test_file, save_ref=False, mode="w")
+        self.assertTrue(os.path.exists(self.test_file))
+
+        # Peek meta without loading full dataset
+        meta = MSDataset.read_dataset_meta(self.test_file)
+
+        # Basic checks
+        self.assertEqual(meta.description, self.ds.description)
+        self.assertDictEqual(meta.attributes, self.ds.attributes)
+        self.assertListEqual(meta.tags, self.ds.tags)
+
+        # Modify and re-save meta
+        self.ds.description = "Updated description"
+        self.ds.set_attribute("source", "unit_test")
+        self.ds.add_tag("test_data")
+        self.ds.add_tag("msdataset")
+        self.ds.to_hdf5(self.test_file, save_ref=False, mode="w")
+        meta_updated = MSDataset.read_dataset_meta(self.test_file)
+        self.assertEqual(meta_updated.description, "Updated description")
+        self.assertEqual(meta_updated.attributes["source"], "unit_test")
+        self.assertIn("test_data", meta_updated.tags)
+        self.assertIn("msdataset", meta_updated.tags)
+
 if __name__ == "__main__":
     unittest.main()
