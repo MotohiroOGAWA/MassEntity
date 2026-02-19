@@ -74,5 +74,5 @@ def set_peak_id(
     # Write back to pandas metadata via PeakSeries.__setitem__
     # convert to CPU numpy to avoid pandas issues
     ps[col_name] = peak_id.cpu().numpy()
-    ps[col_name] = ps[col_name].astype(np.int64)  # ensure int64 dtype in pandas
+    ps[col_name] = ps.metadata[col_name].astype(np.int64)  # ensure int64 dtype in pandas
     return True
