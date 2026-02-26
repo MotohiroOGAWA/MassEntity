@@ -7,78 +7,109 @@ from ..core import MSDataset
 from ..utils.annotate import set_spec_id
 
 
-def read_msp(filepath, 
-             encoding='utf-8', 
-             return_header_map=False, 
-             spec_id_prefix=None, 
-             error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
-             error_log_file=None,
-             allow_duplicate_cols=False,
-             show_progress=True,
-             peak_parser: Optional[Callable[[str], List[Dict]]] = None,
-             auto_peak_col_prefix: str = "column",
-             ) -> MSDataset:
-    
+def read_msp(
+    filepath,
+    encoding="utf-8",
+    return_header_map=False,
+    spec_id_prefix=None,
+    error_log_level: ErrorLogLevel = ErrorLogLevel.NONE,
+    error_log_file=None,
+    allow_duplicate_cols=False,
+    show_progress=True,
+    peak_parser: Optional[Callable[[str], List[Dict]]] = None,
+    auto_peak_col_prefix: str = "column",
+    *,
+    peak_chunk_lines: int = 500,
+) -> MSDataset:
+
     msp_reader = ReaderContext(
-        filepath, 
+        filepath,
         file_type_name="msp",
-        error_log_level=error_log_level, 
+        error_log_level=error_log_level,
         error_log_file=error_log_file,
         encoding=encoding,
         allow_duplicate_cols=allow_duplicate_cols,
         show_progress=show_progress,
-        )
-    
-    with open(filepath, 'r', encoding=encoding) as f:
+    )
+
+    with open(filepath, "r", encoding=encoding) as f:
         peak_flag = False
-        peak_text = ""
-        for line in f.readlines():
+
+        # Buffer peak text in chunks to avoid large incremental string concatenation
+        peak_chunks: List[str] = []   # list of chunk-strings
+        peak_lines: List[str] = []    # current line buffer
+
+        def _flush_peak_lines() -> None:
+            """Flush buffered lines into peak_chunks as a single string."""
+            if peak_lines:
+                peak_chunks.append("".join(peak_lines))
+                peak_lines.clear()
+
+        def _get_peak_text_and_reset() -> str:
+            """Finalize peak text for a record and reset buffers."""
+            _flush_peak_lines()
+            text = "".join(peak_chunks)
+            peak_chunks.clear()
+            return text
+
+        for line in f:  # <-- stream, not readlines()
             msp_reader.update(line)
             try:
-                if not peak_flag and line == '\n':
-                    pass
+                if (not peak_flag) and (line == "\n"):
+                    continue
 
-                elif peak_flag and line == '\n':
+                elif peak_flag and line == "\n":
                     try:
+                        peak_text = _get_peak_text_and_reset()
+
                         if peak_parser is None:
-                            peaks: List[Dict] = parse_peak_text(peak_text, auto_col_prefix=auto_peak_col_prefix)
+                            peaks: List[Dict] = parse_peak_text(
+                                peak_text,
+                                auto_col_prefix=auto_peak_col_prefix,
+                            )
                         else:
                             peaks: List[Dict] = peak_parser(peak_text)
+
                         for peak_entry in peaks:
                             msp_reader.add_peak(**peak_entry)
+
                     except Exception as e:
+                        # Log the full peak_text for this record (may be large but only on error)
                         msp_reader.add_error_message(str(e), line_text=peak_text)
 
                     msp_reader.update_record()
                     peak_flag = False
-                    peak_text = ""
 
                 elif peak_flag:
-                    peak_text += line
-                    
-                else:
-                    k,v = line.split(":", 1)
-                        
-                    parsed_k, parsed_v = msp_reader.add_meta(k,v)
+                    peak_lines.append(line)
+                    if peak_chunk_lines > 0 and len(peak_lines) >= peak_chunk_lines:
+                        _flush_peak_lines()
 
+                else:
+                    k, v = line.split(":", 1)
+                    parsed_k, parsed_v = msp_reader.add_meta(k, v)
                     if parsed_k == "NumPeaks":
                         peak_flag = True
-                
+                        peak_chunks.clear()
+                        peak_lines.clear()
+
             except Exception as e:
                 msp_reader.add_error_message(str(e), line_text=line)
-            finally:
-                pass
-    
-    if peak_text != "":
-        if peak_parser is None:
-            peaks: List[Dict] = parse_peak_text(peak_text)
-        else:
-            peaks: List[Dict] = peak_parser(peak_text)
-        for peak_entry in peaks:
-            msp_reader.add_peak(**peak_entry)
-        msp_reader.update_record()
-        peak_flag = False
-        peak_text = ""
+
+    # Handle EOF without trailing blank line (if we are still in peak section)
+    if peak_flag and (peak_chunks or peak_lines):
+        peak_text = _get_peak_text_and_reset()
+        try:
+            if peak_parser is None:
+                peaks: List[Dict] = parse_peak_text(peak_text, auto_col_prefix=auto_peak_col_prefix)
+            else:
+                peaks: List[Dict] = peak_parser(peak_text)
+            for peak_entry in peaks:
+                msp_reader.add_peak(**peak_entry)
+            msp_reader.update_record()
+        except Exception as e:
+            msp_reader.add_error_message(str(e), line_text=peak_text)
+            msp_reader.update_record()
 
     ms_dataset = msp_reader.get_dataset()
 
@@ -87,8 +118,7 @@ def read_msp(filepath,
 
     if return_header_map:
         return ms_dataset, msp_reader.header_map
-    else:
-        return ms_dataset
+    return ms_dataset
 
 def write_msp(
         dataset: MSDataset, 

@@ -17,6 +17,8 @@ def read_mgf(filepath,
              allow_duplicate_cols: bool = False,
              peak_parser: Optional[Callable[[str], List[Dict]]] = None,
              auto_peak_col_prefix: str = "column",
+             *,
+             peak_chunk_lines: int = 500,
              ) -> MSDataset:
     """
     Read MGF (Mascot Generic Format) file and return as MSDataset.
@@ -45,7 +47,24 @@ def read_mgf(filepath,
 
     with open(filepath, "r", encoding=encoding) as f:
         peak_flag = False
-        peak_text = ""
+
+        # Buffer peak text in chunks to avoid large incremental string concatenation
+        peak_chunks: List[str] = []   # list of chunk-strings
+        peak_lines: List[str] = []    # current line buffer
+
+        def _flush_peak_lines() -> None:
+            """Flush buffered lines into peak_chunks as a single string."""
+            if peak_lines:
+                peak_chunks.append("".join(peak_lines))
+                peak_lines.clear()
+
+        def _get_peak_text_and_reset() -> str:
+            """Finalize peak text for a record and reset buffers."""
+            _flush_peak_lines()
+            text = "".join(peak_chunks)
+            peak_chunks.clear()
+            return text
+            
         for line in f:
             mgf_reader.update(line)
             try:
@@ -60,8 +79,13 @@ def read_mgf(filepath,
                 if line.upper().startswith("BEGIN IONS"):
                     peak_flag = False
                     peak_text = ""
+                    peak_chunks.clear()
+                    peak_lines.clear()
+
                 elif line.upper().startswith("END IONS"):
                     try:
+                        peak_text = _get_peak_text_and_reset()
+
                         if peak_parser is None:
                             peaks: List[Dict] = parse_peak_text(peak_text, auto_col_prefix=auto_peak_col_prefix)
                         else:
@@ -73,11 +97,12 @@ def read_mgf(filepath,
 
                     mgf_reader.update_record()
                     peak_flag = False
-                    peak_text = ""
 
                 # --- Inside an IONS block ---
                 elif peak_flag:
-                    peak_text += line
+                    peak_lines.append(line)
+                    if peak_chunk_lines > 0 and len(peak_lines) >= peak_chunk_lines:
+                        _flush_peak_lines()
                 else:
                     # --- Metadata lines ---
                     if '=' in line:
