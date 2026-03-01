@@ -470,6 +470,107 @@ class MSDataset:
             tags=tags,
         )
 
+    def merge_meta_df(
+        self,
+        right: pd.DataFrame,
+        *,
+        on: str = "SMILES",
+        how: Literal["left"] = "left",
+        add_columns: Optional[Sequence[str]] = None,
+        right_prefix: str = "",
+        overwrite: bool = False,
+        drop_right_duplicates: bool = True,
+        keep: Literal["first", "last"] = "first",
+    ) -> "MSDataset":
+        """
+        Merge external DataFrame (right) into this MSDataset's spectrum metadata
+        by key column (default: SMILES), and write back only additional columns.
+
+        - Does NOT change row count/order of MSDataset.
+        - Updates only the current view rows.
+        - By default drops duplicates in right on the key.
+
+        Args:
+            right: DataFrame to join (e.g., ClassyFire TSV loaded by pandas).
+            on: join key column name. Must exist in both left(meta) and right.
+            how: only 'left' is supported (keep MSDataset rows).
+            add_columns: which columns from right to add. If None, add all right columns except `on`.
+            right_prefix: optional prefix added to added columns (to avoid name collisions).
+            overwrite: if False, do not overwrite existing non-NaN values in left.
+            drop_right_duplicates: if True, drop duplicates in right by `on`.
+            keep: which duplicate to keep if dropping duplicates.
+
+        Returns:
+            self (for chaining)
+        """
+        if how != "left":
+            raise ValueError("Only how='left' is supported to keep MSDataset row count.")
+
+        if on not in self._spectrum_meta_ref.columns:
+            raise KeyError(f"Left MSDataset meta does not contain key column '{on}'")
+        if on not in right.columns:
+            raise KeyError(f"Right DataFrame does not contain key column '{on}'")
+
+        right_df: pd.DataFrame = right.copy()
+
+        # choose columns to add
+        if add_columns is None:
+            add_columns = [c for c in right_df.columns if c != on]
+        else:
+            missing = [c for c in add_columns if c not in right_df.columns]
+            if missing:
+                raise KeyError(f"Right DataFrame missing columns: {missing}")
+            add_columns = list(add_columns)
+
+        # drop duplicates on key (ClassyFire側に同一SMILESが複数あるケース)
+        if drop_right_duplicates:
+            right_df = right_df.drop_duplicates(subset=[on], keep=keep)
+
+        # restrict right to needed columns only
+        right_df = right_df[[on] + add_columns]
+
+        # rename columns (prefix) to avoid collision if needed
+        rename_map = {}
+        for c in add_columns:
+            new_c = f"{right_prefix}{c}" if right_prefix else c
+            if new_c != c:
+                rename_map[c] = new_c
+        if rename_map:
+            right_df = right_df.rename(columns=rename_map)
+
+        added_cols = [rename_map.get(c, c) for c in add_columns]
+
+        # ---- Build a left table for only the view rows, but keep original indices ----
+        idx = self._peak_series._index.cpu().numpy() if hasattr(self._peak_series._index, "cpu") else np.asarray(self._peak_series._index)
+        left_view = self._spectrum_meta_ref.loc[idx, [on]].copy()
+        left_view["_row_index__"] = idx
+
+        # ---- Merge (left join) ----
+        merged = left_view.merge(right_df, on=on, how="left")
+
+        # ---- Write back to underlying meta (only view rows) ----
+        for col in added_cols:
+            # ensure column exists in underlying table
+            if col not in self._spectrum_meta_ref.columns:
+                self._spectrum_meta_ref[col] = np.nan
+
+            if not overwrite:
+                # only fill where left is NaN
+                target_series = self._spectrum_meta_ref.loc[merged["_row_index__"], col]
+                fill_mask = target_series.isna().to_numpy()
+                vals = merged[col].to_numpy()
+                # assign only positions where fill_mask True
+                row_ids = merged["_row_index__"].to_numpy()
+                self._spectrum_meta_ref.loc[row_ids[fill_mask], col] = vals[fill_mask]
+            else:
+                self._spectrum_meta_ref.loc[merged["_row_index__"], col] = merged[col].to_numpy()
+
+            # track column in view columns
+            if col not in self._columns:
+                self._columns.append(col)
+
+        return self
+
     # -------------------------------------------------
     # Parquet <-> bytes helpers
     # -------------------------------------------------
