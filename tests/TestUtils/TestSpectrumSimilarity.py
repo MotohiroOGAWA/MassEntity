@@ -59,7 +59,7 @@ class TestCosineSimilarityMatrixPaired(unittest.TestCase):
         ds = self._load_ds_or_skip()
         idx = self._find_nonzero_indices(ds, max_k=8)
 
-        sim = cosine_similarity_matrix(
+        sim = cosine_similarity_pair(
             ds, idx,
             ds, idx,
             bin_width=0.01,
@@ -75,7 +75,7 @@ class TestCosineSimilarityMatrixPaired(unittest.TestCase):
         ds = self._load_ds_or_skip()
         idx = self._find_nonzero_indices(ds, max_k=8)
 
-        sim = cosine_similarity_matrix(
+        sim = cosine_similarity_pair(
             ds, idx,
             ds, idx,
             bin_width=0.01,
@@ -91,7 +91,7 @@ class TestCosineSimilarityMatrixPaired(unittest.TestCase):
         ds = self._load_ds_or_skip()
         idx = self._find_nonzero_indices(ds, max_k=8)
 
-        sim = cosine_similarity_matrix(
+        sim = cosine_similarity_pair(
             ds, idx,
             ds, idx,
             bin_width=0.01,
@@ -111,7 +111,7 @@ class TestCosineSimilarityMatrixPaired(unittest.TestCase):
 
         idx2 = idx[torch.randperm(idx.numel())]
 
-        sim = cosine_similarity_matrix(
+        sim = cosine_similarity_pair(
             ds, idx,
             ds, idx2,
             bin_width=0.01,
@@ -134,7 +134,7 @@ class TestCosineSimilarityMatrixPaired(unittest.TestCase):
         ds = self._load_ds_or_skip()
         idx = torch.empty((0,), dtype=torch.int64)
 
-        sim = cosine_similarity_matrix(
+        sim = cosine_similarity_pair(
             ds, idx,
             ds, idx,
             bin_width=0.01,
@@ -266,7 +266,7 @@ class TestCosineSimilarityAllPairsMatrix(unittest.TestCase):
             i_t = torch.tensor([i], dtype=torch.int64)
             j_t = torch.tensor([j], dtype=torch.int64)
 
-            s_ij = cosine_similarity_matrix(
+            s_ij = cosine_similarity_pair(
                 ds_sub, i_t,
                 ds_sub, j_t,
                 bin_width=0.01,

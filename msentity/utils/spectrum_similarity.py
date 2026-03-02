@@ -5,30 +5,95 @@ import torch
 from ..core.MSDataset import MSDataset
 
 
-def cosine_similarity_matrix(
-    ds1: MSDataset,
+def cosine_similarity_pair(
+    ds1,
     index1: torch.Tensor,
-    ds2: MSDataset,
+    ds2,
     index2: torch.Tensor,
     *,
     bin_width: float = 0.01,
     intensity_exponent: float = 1.0,
+    max_cum_peaks: int = 200_000,
     device: Optional[torch.device] = None,
 ) -> torch.Tensor:
     """
-    Paired cosine similarity (vectorized, no Python loop).
+    Paired cosine similarity computed in chunks.
 
-    Matching rule:
-      - peaks match if |mz1 - mz2| <= bin_width
-      - unmatched peaks contribute 0 to dot
-      - cosine = dot / (||v1|| * ||v2||)
-
-    Returns:
-      sim: Tensor [K]
+    This function splits the (index1, index2) pairs into chunks so that the
+    cumulative number of peaks in *either* ds1 or ds2 does not exceed max_cum_peaks.
+    Each chunk is computed by _cosine_similarity_pair_core and then concatenated
+    back into a single [K] tensor.
     """
-
     assert index1.ndim == 1 and index2.ndim == 1
-    assert index1.size(0) == index2.size(0)
+    assert index1.numel() == index2.numel()
+
+    K = index1.numel()
+    if K == 0:
+        return torch.empty(0, device=device or torch.device("cpu"))
+
+    if device is None:
+        device = ds1.peaks.device
+
+    # Peak counts per paired spectrum (on CPU for cheap cumsum)
+    len1 = ds1[index1].peaks.length.to("cpu", dtype=torch.long)
+    len2 = ds2[index2].peaks.length.to("cpu", dtype=torch.long)
+
+    out = torch.empty(K, device=device, dtype=torch.float32)
+
+    start = 0
+    while start < K:
+        # Build cumulative peak counts starting from `start`
+        c1 = torch.cumsum(len1[start:], dim=0)
+        c2 = torch.cumsum(len2[start:], dim=0)
+
+        # Find the first position where either cumulative sum exceeds the budget
+        exceed = (c1 > max_cum_peaks) | (c2 > max_cum_peaks)
+
+        if torch.any(exceed):
+            # first_exceed is the offset (>=0) where it first becomes True
+            first_exceed = int(torch.nonzero(exceed, as_tuple=False)[0].item())
+            # Use the range that stays within budget; ensure at least one pair
+            end = start + max(1, first_exceed)
+        else:
+            end = K
+
+        # Compute this chunk using the core routine (no chunking inside)
+        sim_chunk = _cosine_similarity_pair_core(
+            ds1,
+            index1[start:end],
+            ds2,
+            index2[start:end],
+            bin_width=bin_width,
+            intensity_exponent=intensity_exponent,
+            device=device,
+        )
+        out[start:end] = sim_chunk
+
+        start = end
+
+    return out
+
+
+def _cosine_similarity_pair_core(
+    ds1,
+    index1: torch.Tensor,
+    ds2,
+    index2: torch.Tensor,
+    *,
+    bin_width: float,
+    intensity_exponent: float,
+    device: torch.device,
+) -> torch.Tensor:
+    """
+    Core paired cosine similarity (vectorized, no Python loop over pairs).
+
+    Notes
+    -----
+    This implementation forms an (n_peaks1 x n_peaks2) broadcasted matrix,
+    so it must only be called on chunks that fit in memory.
+    """
+    assert index1.ndim == 1 and index2.ndim == 1
+    assert index1.numel() == index2.numel()
 
     subset1 = ds1[index1]
     subset2 = ds2[index2]
@@ -36,64 +101,59 @@ def cosine_similarity_matrix(
     ps1 = subset1.peaks
     ps2 = subset2.peaks
 
-    if device is None:
-        device = ps1.device
-
     K = index1.numel()
     if K == 0:
         return torch.empty(0, device=device)
 
-    # --------- flatten all peaks ---------
+    # Flatten all peaks
     mz1 = ps1.mz.to(device)
     it1 = ps1.intensity.to(device).float()
     mz2 = ps2.mz.to(device)
     it2 = ps2.intensity.to(device).float()
 
-    # intensity power transform
+    # Intensity power transform
     if intensity_exponent != 1.0:
         it1 = torch.clamp(it1, min=0.0) ** intensity_exponent
         it2 = torch.clamp(it2, min=0.0) ** intensity_exponent
 
-    # spectrum id per peak
+    # Spectrum id per peak within the chunk
     spec_id1 = torch.repeat_interleave(
         torch.arange(K, device=device),
-        ps1.length
+        ps1.length.to(device)
     )
     spec_id2 = torch.repeat_interleave(
         torch.arange(K, device=device),
-        ps2.length
+        ps2.length.to(device)
     )
 
-    # --------- compute pairwise mz diff ---------
-    # broadcast
+    # Pairwise m/z difference (broadcast)
     diff = mz1[:, None] - mz2[None, :]
-    mask = (diff.abs() <= bin_width)
+    mask = diff.abs() <= bin_width
 
-    # only keep matches within same spectrum pair
+    # Only keep matches within the same paired spectrum
     same_spec = spec_id1[:, None] == spec_id2[None, :]
     valid = mask & same_spec
 
-    # dot product contributions
+    # Dot-product contributions
     dot_matrix = (it1[:, None] * it2[None, :]) * valid
 
-    # sum per spectrum
+    # Sum dot per spectrum pair
     dot = torch.zeros(K, device=device)
     dot.scatter_add_(
         0,
         spec_id1.repeat_interleave(mz2.numel()),
-        dot_matrix.reshape(-1)
+        dot_matrix.reshape(-1),
     )
 
-    # --------- compute norms ----------
+    # Norms per spectrum pair
     norm1 = torch.zeros(K, device=device)
     norm2 = torch.zeros(K, device=device)
 
     norm1.scatter_add_(0, spec_id1, it1 * it1)
     norm2.scatter_add_(0, spec_id2, it2 * it2)
 
-    norm = torch.sqrt(norm1 * norm2).clamp(min=1e-12)
-
-    return dot / norm
+    denom = torch.sqrt(norm1 * norm2).clamp(min=1e-12)
+    return dot / denom
 
 def cosine_similarity_all_pairs_matrix(
     ds1: MSDataset,
@@ -148,7 +208,7 @@ def cosine_similarity_all_pairs_matrix(
         idx1 = torch.div(p, n2, rounding_mode="floor")
         idx2 = torch.remainder(p, n2)
 
-        sims = cosine_similarity_matrix(
+        sims = cosine_similarity_pair(
             ds1, idx1,
             ds2, idx2,
             bin_width=bin_width,
