@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Sequence, Tuple
 import torch
+from tqdm import tqdm
 
 from ..core.MSDataset import MSDataset
 
@@ -15,6 +16,7 @@ def cosine_similarity_pair(
     intensity_exponent: float = 1.0,
     max_cum_peaks: int = 200_000,
     device: Optional[torch.device] = None,
+    show_progress: bool = False,
 ) -> torch.Tensor:
     """
     Paired cosine similarity computed in chunks.
@@ -34,6 +36,9 @@ def cosine_similarity_pair(
     if device is None:
         device = ds1.peaks.device
 
+    ds1 = ds1.to(device=device)
+    ds2 = ds2.to(device=device)
+
     # Peak counts per paired spectrum (on CPU for cheap cumsum)
     len1 = ds1[index1].peaks.length.to("cpu", dtype=torch.long)
     len2 = ds2[index2].peaks.length.to("cpu", dtype=torch.long)
@@ -41,6 +46,11 @@ def cosine_similarity_pair(
     out = torch.empty(K, device=device, dtype=torch.float32)
 
     start = 0
+    if show_progress:
+        pbar = tqdm(total=K, desc="Computing paired cosine similarity")
+    else:
+        pbar = None
+
     while start < K:
         # Build cumulative peak counts starting from `start`
         c1 = torch.cumsum(len1[start:], dim=0)
@@ -69,7 +79,14 @@ def cosine_similarity_pair(
         )
         out[start:end] = sim_chunk
 
+        if pbar is not None:
+            pbar.update(end - start)
+            
         start = end
+
+
+    if pbar is not None:
+        pbar.close()
 
     return out
 
