@@ -102,15 +102,17 @@ def _cosine_similarity_pair_core(
     device: torch.device,
 ) -> torch.Tensor:
     """
-    Core paired cosine similarity (vectorized, no Python loop over pairs).
+    Paired cosine similarity using m/z binning.
 
     Notes
     -----
-    This implementation forms an (n_peaks1 x n_peaks2) broadcasted matrix,
-    so it must only be called on chunks that fit in memory.
+    - Each spectrum pair is compared in a shared binned m/z space.
+    - This guarantees the cosine score is <= 1 up to numerical error.
+    - Peaks falling into the same bin are summed.
     """
     assert index1.ndim == 1 and index2.ndim == 1
     assert index1.numel() == index2.numel()
+    assert bin_width > 0
 
     subset1 = ds1[index1]
     subset2 = ds2[index2]
@@ -123,54 +125,86 @@ def _cosine_similarity_pair_core(
         return torch.empty(0, device=device)
 
     # Flatten all peaks
-    mz1 = ps1.mz.to(device)
+    mz1 = ps1.mz.to(device).float()
     it1 = ps1.intensity.to(device).float()
-    mz2 = ps2.mz.to(device)
+    mz2 = ps2.mz.to(device).float()
     it2 = ps2.intensity.to(device).float()
 
     # Intensity power transform
     if intensity_exponent != 1.0:
         it1 = torch.clamp(it1, min=0.0) ** intensity_exponent
         it2 = torch.clamp(it2, min=0.0) ** intensity_exponent
+    else:
+        it1 = torch.clamp(it1, min=0.0)
+        it2 = torch.clamp(it2, min=0.0)
 
     # Spectrum id per peak within the chunk
     spec_id1 = torch.repeat_interleave(
-        torch.arange(K, device=device),
-        ps1.length.to(device)
+        torch.arange(K, device=device, dtype=torch.long),
+        ps1.length.to(device),
     )
     spec_id2 = torch.repeat_interleave(
-        torch.arange(K, device=device),
-        ps2.length.to(device)
+        torch.arange(K, device=device, dtype=torch.long),
+        ps2.length.to(device),
     )
 
-    # Pairwise m/z difference (broadcast)
-    diff = mz1[:, None] - mz2[None, :]
-    mask = diff.abs() <= bin_width
+    # ---------------------------------------------------------
+    # Convert each peak to an integer bin id
+    # ---------------------------------------------------------
+    bin1 = torch.floor(mz1 / bin_width).long()
+    bin2 = torch.floor(mz2 / bin_width).long()
 
-    # Only keep matches within the same paired spectrum
-    same_spec = spec_id1[:, None] == spec_id2[None, :]
-    valid = mask & same_spec
+    if bin1.numel() == 0 and bin2.numel() == 0:
+        return torch.zeros(K, device=device)
 
-    # Dot-product contributions
-    dot_matrix = (it1[:, None] * it2[None, :]) * valid
+    # Shared global bin range within this chunk
+    if bin1.numel() == 0:
+        min_bin = bin2.min()
+        max_bin = bin2.max()
+    elif bin2.numel() == 0:
+        min_bin = bin1.min()
+        max_bin = bin1.max()
+    else:
+        min_bin = torch.minimum(bin1.min(), bin2.min())
+        max_bin = torch.maximum(bin1.max(), bin2.max())
 
-    # Sum dot per spectrum pair
-    dot = torch.zeros(K, device=device)
-    dot.scatter_add_(
-        0,
-        spec_id1.repeat_interleave(mz2.numel()),
-        dot_matrix.reshape(-1),
-    )
+    n_bins = int((max_bin - min_bin + 1).item())
 
-    # Norms per spectrum pair
-    norm1 = torch.zeros(K, device=device)
-    norm2 = torch.zeros(K, device=device)
+    # Shift to [0, n_bins)
+    bin1 = bin1 - min_bin
+    bin2 = bin2 - min_bin
 
-    norm1.scatter_add_(0, spec_id1, it1 * it1)
-    norm2.scatter_add_(0, spec_id2, it2 * it2)
+    # ---------------------------------------------------------
+    # Build per-spectrum binned vectors using flattened indexing
+    # flat_index = spec_id * n_bins + bin_id
+    # ---------------------------------------------------------
+    flat_size = K * n_bins
+
+    vec1 = torch.zeros(flat_size, device=device, dtype=it1.dtype)
+    vec2 = torch.zeros(flat_size, device=device, dtype=it2.dtype)
+
+    if bin1.numel() > 0:
+        flat_idx1 = spec_id1 * n_bins + bin1
+        vec1.scatter_add_(0, flat_idx1, it1)
+
+    if bin2.numel() > 0:
+        flat_idx2 = spec_id2 * n_bins + bin2
+        vec2.scatter_add_(0, flat_idx2, it2)
+
+    vec1 = vec1.view(K, n_bins)
+    vec2 = vec2.view(K, n_bins)
+
+    # ---------------------------------------------------------
+    # Cosine similarity
+    # ---------------------------------------------------------
+    dot = (vec1 * vec2).sum(dim=1)
+    norm1 = (vec1 * vec1).sum(dim=1)
+    norm2 = (vec2 * vec2).sum(dim=1)
 
     denom = torch.sqrt(norm1 * norm2).clamp(min=1e-12)
-    return dot / denom
+    score = dot / denom
+
+    return score
 
 def cosine_similarity_all_pairs_matrix(
     ds1: MSDataset,
